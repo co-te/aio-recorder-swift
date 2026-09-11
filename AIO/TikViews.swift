@@ -150,7 +150,11 @@ private struct TikSourceCard: View {
                         }
                     }
                     .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background((source.enabled ? Theme.warn : Theme.green).opacity(0.25), in: Capsule())
+                    .foregroundStyle(source.enabled ? Theme.warn : Theme.green)
 
                     Button("Check now") {
                         Task {
@@ -159,15 +163,23 @@ private struct TikSourceCard: View {
                         }
                     }
                     .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Theme.blue.opacity(0.25), in: Capsule())
                     .foregroundStyle(Theme.blue)
 
-                    Button("Record now") {
+                    Button("Record") {
                         Task {
                             try? await api.startNow(source.id)
                             onChange()
                         }
                     }
                     .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Theme.red.opacity(0.25), in: Capsule())
                     .foregroundStyle(Theme.red)
 
                     Spacer()
