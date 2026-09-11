@@ -123,7 +123,7 @@ private struct TikSourceCard: View {
                             .fontWeight(.semibold)
                             .foregroundStyle(Theme.textPrimary)
                         SecondaryLabel(
-                            "\(source.platform) · every \(source.interval)s · \(source.quality ?? "best")",
+                            "\(source.platform) · every \(source.interval) min · \(source.quality ?? "best")",
                             font: .caption2)
                     }
                     Spacer()
@@ -206,7 +206,7 @@ private struct TikAddSourceSheet: View {
     @State private var platform = "tiktok"
     @State private var user = ""
     @State private var url = ""
-    @State private var interval = "180"
+    @State private var interval = "3"
     @State private var quality = "best"
     @State private var busy = false
     @State private var err: String?
@@ -227,7 +227,7 @@ private struct TikAddSourceSheet: View {
                         .autocorrectionDisabled()
                 }
                 Section("Options") {
-                    TextField("Check interval seconds", text: $interval)
+                    TextField("Check interval minutes", text: $interval)
                         .keyboardType(.numberPad)
                     TextField("Quality (best, 1080p…)", text: $quality)
                         .textInputAutocapitalization(.never)
@@ -255,7 +255,7 @@ private struct TikAddSourceSheet: View {
         do {
             try await api.addSource(platform: platform,
                                     user: user.trimmingCharacters(in: .whitespaces),
-                                    interval: Int(interval) ?? 180,
+                                    interval: Int(interval) ?? 3,
                                     quality: quality.trimmingCharacters(in: .whitespaces),
                                     url: url.trimmingCharacters(in: .whitespaces))
             dismiss()
@@ -290,7 +290,7 @@ private struct TikEditSourceSheet: View {
         NavigationStack {
             Form {
                 Section("Check frequency") {
-                    TextField("Seconds between checks", text: $interval)
+                    TextField("Minutes between checks", text: $interval)
                         .keyboardType(.numberPad)
                 }
                 Section("Quality") {
@@ -557,7 +557,7 @@ private struct TikConfigView: View {
                         GlassField(icon: "folder", placeholder: "Output dir", text: $outputDir)
                         GlassField(icon: "sparkles", placeholder: "Quality (best, 1080p…)", text: $quality)
                         GlassField(icon: "network", placeholder: "Proxy (optional)", text: $proxy)
-                        GlassField(icon: "timer", placeholder: "Check interval seconds", text: $interval, keyboard: .numberPad)
+                        GlassField(icon: "timer", placeholder: "Check interval minutes", text: $interval, keyboard: .numberPad)
                         Toggle("Auto-convert to MP4", isOn: $autoConvert)
                             .tint(Theme.blue)
                             .foregroundStyle(Theme.textPrimary)
