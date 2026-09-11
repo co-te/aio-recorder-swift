@@ -172,8 +172,14 @@ final class TikAPI {
         ]))
     }
 
-    func updateSource(_ id: String, enabled: Bool) async throws {
-        _ = try await sendDict(req("PUT", "/api/sources/\(id)", json: ["enabled": enabled]))
+    func updateSource(_ id: String, enabled: Bool? = nil, interval: Int? = nil,
+                       quality: String? = nil, duration: Int? = nil) async throws {
+        var payload = [String: Any]()
+        if let enabled { payload["enabled"] = enabled }
+        if let interval { payload["interval"] = interval }
+        if let quality { payload["quality"] = quality }
+        if let duration { payload["duration"] = duration }
+        _ = try await sendDict(req("PUT", "/api/sources/\(id)", json: payload))
     }
 
     func deleteSource(_ id: String) async throws {

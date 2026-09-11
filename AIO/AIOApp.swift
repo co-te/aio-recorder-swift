@@ -207,6 +207,12 @@ struct AIOSettingsView: View {
     @State private var driveToken = ""
     @State private var testing = false
     @State private var testLines: [String] = []
+    @State private var driveUsage: TDUsage?
+    @State private var maxConc = 2
+    @State private var driveNote: String?
+    @State private var confirmLogout = false
+
+    private var driveAPI: DriveAPI { DriveAPI(settings: current().drive) }
 
     var body: some View {
         ScrollView {
@@ -259,6 +265,58 @@ struct AIOSettingsView: View {
                     }
                 }
 
+                if let driveUsage {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            CardHeader(title: "Drive daily quota", icon: "gauge.with.dots.needle.67percent")
+                            ProgressView(value: driveUsage.fractionUsed)
+                                .tint(driveUsage.fractionUsed > 0.9 ? Theme.red : Theme.blue)
+                            SecondaryLabel(
+                                "\(Fmt.bytes(driveUsage.uploadedBytes)) of \(Fmt.bytes(driveUsage.limitBytes)) used · \(Fmt.bytes(driveUsage.remainingBytes)) left",
+                                font: .caption)
+                            HStack {
+                                GlassButton(title: "Reset", icon: "arrow.counterclockwise", tint: Theme.warn) {
+                                    Task {
+                                        try? await driveAPI.resetUsage()
+                                        await loadDrive()
+                                    }
+                                }
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        CardHeader(title: "Drive uploads", icon: "cloud.upload")
+                        Stepper("Max concurrent: \(maxConc)", value: $maxConc, in: 1...8)
+                            .foregroundStyle(Theme.textPrimary)
+                            .onChange(of: maxConc) { n in
+                                Task { try? await driveAPI.saveMaxConcurrent(n) }
+                            }
+                        HStack(spacing: 10) {
+                            GlassButton(title: "Sync", icon: "arrow.triangle.2.circlepath", tint: Theme.green) {
+                                Task {
+                                    try? await driveAPI.sync()
+                                    driveNote = "Sync requested."
+                                }
+                            }
+                            GlassButton(title: "Logout", icon: "rectangle.portrait.and.arrow.right", tint: Theme.red) {
+                                confirmLogout = true
+                            }
+                        }
+                        if let driveNote {
+                            SecondaryLabel(driveNote, font: .caption)
+                        }
+                    }
+                }
+                .confirmationDialog("Log out of Telegram on the server?", isPresented: $confirmLogout) {
+                    Button("Logout", role: .destructive) {
+                        Task { try? await driveAPI.logout() }
+                    }
+                }
+
                 GlassButton(title: "Save", icon: "checkmark", tint: Theme.blue, prominent: true) {
                     apply()
                 }
@@ -270,6 +328,12 @@ struct AIOSettingsView: View {
         .background(AppBackground())
         .navigationTitle("Settings")
         .onAppear { fill() }
+        .task { await loadDrive() }
+    }
+
+    private func loadDrive() async {
+        driveUsage = try? await driveAPI.usage()
+        if let n = try? await driveAPI.maxConcurrent() { maxConc = n }
     }
 
     private func fill() {

@@ -41,6 +41,7 @@ private struct TikSourcesView: View {
     @State private var errorText: String?
     @State private var showAdd = false
     @State private var logSource: TikSource?
+    @State private var editing: TikSource?
 
     var body: some View {
         content
@@ -56,6 +57,9 @@ private struct TikSourcesView: View {
             }
             .sheet(item: $logSource) { s in
                 TikLogSheet(api: api, source: s)
+            }
+            .sheet(item: $editing, onDismiss: { Task { await load() } }) { s in
+                TikEditSourceSheet(api: api, source: s)
             }
     }
 
@@ -76,6 +80,7 @@ private struct TikSourcesView: View {
                         ForEach(items) { s in
                             TikSourceCard(api: api, source: s,
                                           onLog: { logSource = s },
+                                          onEdit: { editing = s },
                                           onChange: { Task { await load() } })
                         }
                     }
@@ -100,6 +105,7 @@ private struct TikSourceCard: View {
     let api: TikAPI
     let source: TikSource
     let onLog: () -> Void
+    let onEdit: () -> Void
     let onChange: () -> Void
     @State private var confirm = false
 
@@ -170,6 +176,10 @@ private struct TikSourceCard: View {
                         Image(systemName: "doc.text")
                             .foregroundStyle(Theme.textSecondary)
                     }
+                    Button { onEdit() } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .foregroundStyle(Theme.textSecondary)
+                    }
                     Button(role: .destructive) { confirm = true } label: {
                         Image(systemName: "trash")
                     }
@@ -232,6 +242,72 @@ private struct TikAddSourceSheet: View {
         do {
             try await api.addSource(platform: platform,
                                     user: user.trimmingCharacters(in: .whitespaces))
+            dismiss()
+        } catch {
+            err = error.messageText
+        }
+    }
+}
+
+private struct TikEditSourceSheet: View {
+    let api: TikAPI
+    let source: TikSource
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var interval: String
+    @State private var quality: String
+    @State private var duration: String
+    @State private var busy = false
+    @State private var err: String?
+
+    init(api: TikAPI, source: TikSource) {
+        self.api = api
+        self.source = source
+        _interval = State(initialValue: String(source.interval))
+        _quality = State(initialValue: source.quality ?? "best")
+        _duration = State(initialValue: source.duration.map(String.init) ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Check frequency") {
+                    TextField("Seconds between checks", text: $interval)
+                        .keyboardType(.numberPad)
+                }
+                Section("Quality") {
+                    TextField("best, 1080p, 720p…", text: $quality)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                Section("Max duration (optional)") {
+                    TextField("Seconds, blank = unlimited", text: $duration)
+                        .keyboardType(.numberPad)
+                }
+                if let err {
+                    Section { Text(err).foregroundStyle(.red).font(.caption) }
+                }
+            }
+            .navigationTitle("@\(source.user)")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { Task { await save() } }.disabled(busy)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func save() async {
+        busy = true
+        defer { busy = false }
+        do {
+            try await api.updateSource(
+                source.id,
+                interval: Int(interval) ?? source.interval,
+                quality: quality.trimmingCharacters(in: .whitespaces),
+                duration: Int(duration))
             dismiss()
         } catch {
             err = error.messageText
