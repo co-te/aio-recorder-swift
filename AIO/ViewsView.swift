@@ -192,7 +192,8 @@ struct ViewsView: View {
 
     private func createGroup() async {
         do {
-            groups = try await api.createGroup(newGroupName.trimmingCharacters(in: .whitespaces))
+            try await api.createGroup(newGroupName.trimmingCharacters(in: .whitespaces))
+            groups = (try? await api.groups()) ?? []
             newGroupName = ""
             showCreateGroup = false
         } catch {
