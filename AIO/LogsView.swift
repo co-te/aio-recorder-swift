@@ -1,76 +1,148 @@
 //
-//  LogsView.swift — miner log tail with streamer filter.
+//  LogsView.swift — miner log tail: virtualized list, background fetch.
 //
 
 import SwiftUI
 
+/// One parsed log line. Miner lines look like
+/// "2026-09-11 10:00:01,234 [INFO] message…" — parser is tolerant.
+private struct MinerLogLine: Identifiable {
+    let id: Int
+    let time: String
+    let level: String
+    let message: String
+
+    var color: Color {
+        switch level {
+        case "ERROR", "CRITICAL": return Theme.red
+        case "WARNING": return Theme.warn
+        case "INFO": return Theme.textPrimary
+        default: return Theme.textSecondary
+        }
+    }
+
+    static func parse(_ raw: String, id: Int) -> MinerLogLine {
+        // Split "…[LEVEL] message" tail first.
+        if let open = raw.firstIndex(of: "["),
+           let close = raw[open...].firstIndex(of: "]") {
+            let lvl = String(raw[raw.index(after: open)..<close]).uppercased()
+            let msg = String(raw[raw.index(after: close)...]).trimmingCharacters(in: .whitespaces)
+            let t = String(raw[..<open]).trimmingCharacters(in: .whitespaces)
+            return MinerLogLine(id: id, time: shortTime(t), level: lvl, message: msg)
+        }
+        return MinerLogLine(id: id, time: "", level: "", message: raw)
+    }
+
+    /// "2026-09-11 10:00:01,234" → "10:00:01".
+    private static func shortTime(_ t: String) -> String {
+        let parts = t.split(separator: " ")
+        guard parts.count >= 2 else { return t }
+        return String(parts[1].split(separator: ",").first ?? parts[1])
+    }
+}
+
 struct LogsView: View {
     let api: MinerAPI
 
-    @State private var lines: [String] = []
+    @State private var all: [MinerLogLine] = []
     @State private var errorText: String?
-    @State private var filter = ""
+    @State private var loading = false
+    @State private var query = ""
+    @State private var levelFilter = ""
 
     var body: some View {
         content
             .background(AppBackground())
             .navigationTitle("Logs")
+            .searchable(text: $query, prompt: "Filter logs")
             .refreshable { await load() }
             .task { await load() }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let err = errorText, lines.isEmpty {
+        if let err = errorText, all.isEmpty {
             ErrorStateView(message: err) { Task { await load() } }
         } else {
             VStack(spacing: 0) {
-                // filter chips
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        FilterChip(label: "All", active: filter.isEmpty) {
-                            filter = ""
-                            Task { await load() }
+                        FilterChip(label: "All", active: levelFilter.isEmpty) {
+                            levelFilter = ""
                         }
-                        ForEach(["error", "bet", "points", "claim"], id: \.self) { kw in
-                            FilterChip(label: kw, active: filter == kw) {
-                                filter = filter == kw ? "" : kw
-                                Task { await load() }
+                        ForEach(["ERROR", "WARNING", "INFO"], id: \.self) { lvl in
+                            FilterChip(label: lvl.capitalized, active: levelFilter == lvl) {
+                                levelFilter = levelFilter == lvl ? "" : lvl
                             }
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
                 }
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 2) {
-                        if visibleLines.isEmpty {
-                            SecondaryLabel("No matching log lines.")
-                        } else {
-                            ForEach(Array(visibleLines.enumerated()), id: \.offset) { _, line in
-                                LogLineView(line: line)
+
+                if loading, all.isEmpty {
+                    ProgressView().tint(.white).padding(.top, 40)
+                    Spacer()
+                } else if visible.isEmpty {
+                    SecondaryLabel("No matching log lines.").padding(.top, 40)
+                    Spacer()
+                } else {
+                    // List virtualizes rows — only visible ones are rendered.
+                    List(visible) { line in
+                        HStack(alignment: .top, spacing: 8) {
+                            if !line.time.isEmpty {
+                                Text(line.time)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .frame(width: 56, alignment: .leading)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                if !line.level.isEmpty {
+                                    Text(line.level)
+                                        .font(.caption2)
+                                        .fontWeight(.bold)
+                                        .foregroundStyle(line.color)
+                                }
+                                Text(line.message)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .textSelection(.enabled)
                             }
                         }
+                        .padding(.vertical, 3)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparatorTint(Color.white.opacity(0.07))
                     }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
-                .padding(.horizontal, 16)
-                Spacer()
             }
         }
     }
 
-    private var visibleLines: [String] {
-        filter.isEmpty ? lines : lines.filter { $0.localizedCaseInsensitiveContains(filter) }
+    private var visible: [MinerLogLine] {
+        // Newest first, capped so the list stays light.
+        let base = all.reversed()
+        let byLevel = levelFilter.isEmpty ? Array(base) : base.filter { $0.level == levelFilter }
+        guard !query.isEmpty else { return Array(byLevel.prefix(200)) }
+        return Array(byLevel.filter { $0.message.localizedCaseInsensitiveContains(query) }.prefix(200))
     }
 
     private func load() async {
+        loading = true
+        defer { loading = false }
         do {
-            lines = try await api.recentLogs(lines: 120)
-            errorText = nil
+            // Decode off the main actor — the payload can be large.
+            let raw = try await Task.detached(priority: .userInitiated) {
+                try await api.recentLogs(lines: 150)
+            }.value
+            let parsed = raw.enumerated().map { MinerLogLine.parse($0.element, id: $0.offset) }
+            await MainActor.run {
+                all = parsed
+                errorText = nil
+            }
         } catch {
-            errorText = error.messageText
+            await MainActor.run { errorText = error.messageText }
         }
     }
 }
@@ -91,25 +163,5 @@ private struct FilterChip: View {
         .background(active ? Theme.twitch.opacity(0.3) : Color.white.opacity(0.06))
         .foregroundStyle(active ? Theme.textPrimary : Theme.textSecondary)
         .clipShape(Capsule())
-    }
-}
-
-private struct LogLineView: View {
-    let line: String
-
-    private var color: Color {
-        let l = line.lowercased()
-        if l.contains("error") || l.contains("fail") { return Theme.red }
-        if l.contains("warn") { return Theme.warn }
-        if l.contains("set_online") || l.contains("claim") { return Theme.green }
-        if l.contains("bet") || l.contains("prediction") { return Theme.twitch }
-        return Theme.textSecondary
-    }
-
-    var body: some View {
-        Text(line)
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(color)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
