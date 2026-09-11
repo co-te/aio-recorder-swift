@@ -754,11 +754,22 @@ private struct TikConfigView: View {
     private func loadProxy() async {
         do {
             let p = try await api.proxyStatus()
-            proxyInfo = "\(p.current) · pool \(p.poolSize) · rotations \(p.rotations)" + (p.lastError.isEmpty ? "" : "\n\(p.lastError)")
+            var lines = ["pool \(p.poolSize) · rotations \(p.rotations)"]
+            for key in p.assignments.keys.sorted() {
+                let short = key.replacingOccurrences(of: "tiktok:", with: "@")
+                lines.append("\(short) → \(shortHost(p.assignments[key] ?? ""))")
+            }
+            if !p.lastError.isEmpty { lines.append(p.lastError) }
+            proxyInfo = lines.joined(separator: "\n")
             err = nil
         } catch {
             err = error.messageText
         }
+    }
+
+    private func shortHost(_ proxy: String) -> String {
+        let parts = proxy.split(separator: ":")
+        return parts.count >= 2 ? String(parts[1].trimmingCharacters(in: CharacterSet(charactersIn: "/"))) : proxy
     }
 
     private func rotateProxy() async {

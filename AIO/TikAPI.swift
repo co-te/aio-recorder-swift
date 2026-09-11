@@ -347,14 +347,14 @@ final class TikAPI {
 
     struct ProxyStatus: Decodable {
         let manual: Bool
-        let current: String
+        let assignments: [String: String]
         let poolSize: Int
         let failures: Int
         let rotations: Int
         let lastError: String
 
         enum CodingKeys: String, CodingKey {
-            case manual, current, failures, rotations
+            case manual, assignments, failures, rotations
             case poolSize = "pool_size"
             case lastError = "last_error"
         }
@@ -365,7 +365,12 @@ final class TikAPI {
     }
 
     func rotateProxy() async throws -> String {
-        struct Resp: Decodable { let current: String? }
-        return (try? await send(Resp.self, req("POST", "/api/proxy/rotate")).current) ?? "direct"
+        struct Resp: Decodable {
+            let rotated: Int?
+            let assignments: [String: String]?
+        }
+        let r = (try? await send(Resp.self, req("POST", "/api/proxy/rotate")))
+        let n = r?.assignments?.count ?? 0
+        return "Rotated \(n) streamer\(n == 1 ? "" : "s")"
     }
 }
