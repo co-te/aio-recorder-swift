@@ -25,6 +25,8 @@ struct ViewsView: View {
     @State private var loading = false
     @State private var errorText: String?
     @State private var detail: TDFile?
+    @State private var showCreateGroup = false
+    @State private var newGroupName = ""
 
     var body: some View {
         content
@@ -37,6 +39,30 @@ struct ViewsView: View {
             }
             .sheet(item: $detail) { f in
                 FileDetailSheet(api: api, file: f)
+            }
+            .sheet(isPresented: $showCreateGroup) {
+                NavigationStack {
+                    Form {
+                        Section("Group name") {
+                            TextField("e.g. movies", text: $newGroupName)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                    }
+                    .navigationTitle("New group")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { showCreateGroup = false }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Create") {
+                                Task { await createGroup() }
+                            }
+                            .disabled(newGroupName.isEmpty)
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
             }
     }
 
@@ -72,9 +98,19 @@ struct ViewsView: View {
                     .padding(.vertical, 8)
                 }
 
-                if selected == "group", !groups.isEmpty {
+                if selected == "group" {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
+                            Button {
+                                showCreateGroup = true
+                            } label: {
+                                Label("New", systemImage: "plus")
+                                    .font(.caption)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                            }
+                            .background(Theme.blue.opacity(0.25), in: Capsule())
+                            .foregroundStyle(Theme.textPrimary)
                             Button {
                                 groupFilter = ""
                                 Task { await load() }
@@ -144,12 +180,24 @@ struct ViewsView: View {
         loading = true
         defer { loading = false }
         do {
+            groups = (try? await api.groups()) ?? []
             items = try await api.view(
                 selected,
                 group: selected == "group" && !groupFilter.isEmpty ? groupFilter : nil)
             errorText = nil
         } catch {
             errorText = error.messageText
+        }
+    }
+
+    private func createGroup() async {
+        do {
+            groups = try await api.createGroup(newGroupName.trimmingCharacters(in: .whitespaces))
+            newGroupName = ""
+            showCreateGroup = false
+        } catch {
+            errorText = error.messageText
+            showCreateGroup = false
         }
     }
 }

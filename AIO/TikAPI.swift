@@ -165,20 +165,27 @@ final class TikAPI {
         return try await send(Resp.self, req("GET", "/api/sources")).sources
     }
 
-    func addSource(platform: String, user: String, interval: Int = 5, quality: String = "best") async throws {
-        _ = try await sendDict(req("POST", "/api/sources", json: [
+    func addSource(platform: String, user: String, interval: Int = 5, quality: String = "best",
+                   url: String? = nil, duration: Int? = nil, outputDir: String? = nil) async throws {
+        var payload: [String: Any] = [
             "platform": platform, "user": user,
             "interval": interval, "quality": quality,
-        ]))
+        ]
+        if let url, !url.isEmpty { payload["url"] = url }
+        if let duration { payload["duration"] = duration }
+        if let outputDir, !outputDir.isEmpty { payload["output_dir"] = outputDir }
+        _ = try await sendDict(req("POST", "/api/sources", json: payload))
     }
 
     func updateSource(_ id: String, enabled: Bool? = nil, interval: Int? = nil,
-                       quality: String? = nil, duration: Int? = nil) async throws {
+                       quality: String? = nil, duration: Int? = nil,
+                       outputDir: String? = nil) async throws {
         var payload = [String: Any]()
         if let enabled { payload["enabled"] = enabled }
         if let interval { payload["interval"] = interval }
         if let quality { payload["quality"] = quality }
         if let duration { payload["duration"] = duration }
+        if let outputDir { payload["output_dir"] = outputDir }
         _ = try await sendDict(req("PUT", "/api/sources/\(id)", json: payload))
     }
 
@@ -244,5 +251,95 @@ final class TikAPI {
         ]
         if let d = s.defaultDuration { payload["default_duration"] = d }
         _ = try await sendDict(req("PUT", "/api/settings", json: payload))
+    }
+
+    // ---- integrations (cookies + telegram) ----
+
+    struct TikCookies: Decodable {
+        var sessionid: String
+        var ttTargetIdc: String
+        var hasCookies: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case sessionid = "sessionid_ss"
+            case ttTargetIdc = "tt-target-idc"
+            case hasCookies = "has_cookies"
+        }
+    }
+
+    struct TikTelegram: Decodable {
+        var apiId: String
+        var apiHash: String
+        var chatId: String
+        var hasTelegram: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case apiId = "api_id"
+            case apiHash = "api_hash"
+            case chatId = "chat_id"
+            case hasTelegram = "has_telegram"
+        }
+    }
+
+    func getIntegrations() async throws -> (cookies: TikCookies, telegram: TikTelegram) {
+        struct Resp: Decodable {
+            let cookies: TikCookies
+            let telegram: TikTelegram
+        }
+        // Tolerate missing keys with safe defaults.
+        let d = try await sendDict(req("GET", "/api/settings"))
+        let dec = JSONDecoder()
+        let cData = (try? JSONSerialization.data(withJSONObject: d["cookies"] ?? [:])) ?? Data()
+        let tData = (try? JSONSerialization.data(withJSONObject: d["telegram"] ?? [:])) ?? Data()
+        let cookies = (try? dec.decode(TikCookies.self, from: cData)) ?? TikCookies(sessionid: "", ttTargetIdc: "useast2a", hasCookies: false)
+        let telegram = (try? dec.decode(TikTelegram.self, from: tData)) ?? TikTelegram(apiId: "", apiHash: "", chatId: "me", hasTelegram: false)
+        return (cookies, telegram)
+    }
+
+    func saveCookies(sessionid: String, ttTargetIdc: String) async throws {
+        _ = try await sendDict(req("PUT", "/api/settings/cookies", json: [
+            "sessionid_ss": sessionid,
+            "tt-target-idc": ttTargetIdc,
+        ]))
+    }
+
+    func saveTelegram(apiId: String, apiHash: String, chatId: String) async throws {
+        _ = try await sendDict(req("PUT", "/api/settings/telegram", json: [
+            "api_id": apiId, "api_hash": apiHash, "chat_id": chatId,
+        ]))
+    }
+
+    // ---- admin (restart / version, X-Admin-Key when configured) ----
+
+    /// Returns the admin key, or nil when the server has none configured.
+    func adminKey() async throws -> String? {
+        let (data, resp) = try await session.data(for: req("GET", "/admin/admin-key"))
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else { return nil }
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return obj?["admin_key"] as? String
+    }
+
+    private func adminReq(_ method: String, _ path: String, key: String?) -> URLRequest {
+        var r = req(method, path)
+        if let key { r.setValue(key, forHTTPHeaderField: "X-Admin-Key") }
+        return r
+    }
+
+    func serverVersion(key: String?) async throws -> (current: String, latest: String) {
+        struct Resp: Decodable {
+            let current: String
+            let latest: String
+        }
+        do {
+            let v: Resp = try await send(Resp.self, adminReq("GET", "/admin/version", key: key))
+            return (v.current, v.latest)
+        } catch {
+            return ("?", "?")
+        }
+    }
+
+    func restartServer(key: String?) async throws {
+        _ = try await sendDict(adminReq("POST", "/admin/restart", key: key))
     }
 }

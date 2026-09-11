@@ -205,6 +205,9 @@ private struct TikAddSourceSheet: View {
 
     @State private var platform = "tiktok"
     @State private var user = ""
+    @State private var url = ""
+    @State private var interval = "180"
+    @State private var quality = "best"
     @State private var busy = false
     @State private var err: String?
 
@@ -217,6 +220,16 @@ private struct TikAddSourceSheet: View {
                         Text("Twitch").tag("twitch")
                     }
                     TextField("Username (without @)", text: $user)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Direct URL (optional)", text: $url)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                Section("Options") {
+                    TextField("Check interval seconds", text: $interval)
+                        .keyboardType(.numberPad)
+                    TextField("Quality (best, 1080p…)", text: $quality)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
@@ -241,7 +254,10 @@ private struct TikAddSourceSheet: View {
         defer { busy = false }
         do {
             try await api.addSource(platform: platform,
-                                    user: user.trimmingCharacters(in: .whitespaces))
+                                    user: user.trimmingCharacters(in: .whitespaces),
+                                    interval: Int(interval) ?? 180,
+                                    quality: quality.trimmingCharacters(in: .whitespaces),
+                                    url: url.trimmingCharacters(in: .whitespaces))
             dismiss()
         } catch {
             err = error.messageText
@@ -257,6 +273,7 @@ private struct TikEditSourceSheet: View {
     @State private var interval: String
     @State private var quality: String
     @State private var duration: String
+    @State private var outputDir: String
     @State private var busy = false
     @State private var err: String?
 
@@ -266,6 +283,7 @@ private struct TikEditSourceSheet: View {
         _interval = State(initialValue: String(source.interval))
         _quality = State(initialValue: source.quality ?? "best")
         _duration = State(initialValue: source.duration.map(String.init) ?? "")
+        _outputDir = State(initialValue: source.outputDir ?? "")
     }
 
     var body: some View {
@@ -283,6 +301,11 @@ private struct TikEditSourceSheet: View {
                 Section("Max duration (optional)") {
                     TextField("Seconds, blank = unlimited", text: $duration)
                         .keyboardType(.numberPad)
+                }
+                Section("Output folder (optional)") {
+                    TextField("Blank = server default", text: $outputDir)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
                 if let err {
                     Section { Text(err).foregroundStyle(.red).font(.caption) }
@@ -307,7 +330,8 @@ private struct TikEditSourceSheet: View {
                 source.id,
                 interval: Int(interval) ?? source.interval,
                 quality: quality.trimmingCharacters(in: .whitespaces),
-                duration: Int(duration))
+                duration: Int(duration),
+                outputDir: outputDir.trimmingCharacters(in: .whitespaces).isEmpty ? nil : outputDir.trimmingCharacters(in: .whitespaces))
             dismiss()
         } catch {
             err = error.messageText
@@ -514,6 +538,15 @@ private struct TikConfigView: View {
     @State private var loaded = false
     @State private var note: String?
     @State private var err: String?
+    @State private var sessionid = ""
+    @State private var idc = "useast2a"
+    @State private var hasCookies = false
+    @State private var tgApiId = ""
+    @State private var tgApiHash = ""
+    @State private var tgChatId = "me"
+    @State private var hasTelegram = false
+    @State private var versionInfo = ""
+    @State private var confirmRestart = false
 
     var body: some View {
         ScrollView {
@@ -534,6 +567,59 @@ private struct TikConfigView: View {
                     Task { await save() }
                 }
                 .frame(maxWidth: .infinity)
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        CardHeader(title: "TikTok cookies", icon: "lock.shield")
+                        SecondaryLabel(hasCookies ? "Cookies stored on server." : "No cookies stored — WAF blocks likely.", font: .caption2)
+                        GlassField(icon: "number", placeholder: "sessionid_ss", text: $sessionid, secure: true)
+                        GlassField(icon: "network", placeholder: "tt-target-idc", text: $idc)
+                        HStack {
+                            GlassButton(title: "Save cookies", icon: "checkmark", tint: Theme.blue) {
+                                Task { await saveCookies() }
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        CardHeader(title: "Telegram alerts", icon: "paperplane")
+                        SecondaryLabel(hasTelegram ? "Telegram linked." : "Not linked.", font: .caption2)
+                        GlassField(icon: "number", placeholder: "api_id", text: $tgApiId, keyboard: .numberPad)
+                        GlassField(icon: "key.fill", placeholder: "api_hash", text: $tgApiHash, secure: true)
+                        GlassField(icon: "person", placeholder: "chat_id (default me)", text: $tgChatId)
+                        HStack {
+                            GlassButton(title: "Save telegram", icon: "checkmark", tint: Theme.blue) {
+                                Task { await saveTelegram() }
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        CardHeader(title: "Server", icon: "server.rack")
+                        if !versionInfo.isEmpty {
+                            SecondaryLabel(versionInfo, font: .caption)
+                        }
+                        HStack(spacing: 10) {
+                            GlassButton(title: "Version", icon: "info.circle", tint: Theme.blue) {
+                                Task { await loadVersion() }
+                            }
+                            GlassButton(title: "Restart", icon: "arrow.triangle.2.circlepath", tint: Theme.red) {
+                                confirmRestart = true
+                            }
+                        }
+                    }
+                }
+                .confirmationDialog("Restart the tik recorder container?", isPresented: $confirmRestart) {
+                    Button("Restart", role: .destructive) {
+                        Task { await restart() }
+                    }
+                }
                 if let note {
                     SecondaryLabel(note, font: .caption)
                 }
@@ -556,6 +642,14 @@ private struct TikConfigView: View {
             proxy = s.proxy
             interval = String(s.defaultInterval)
             autoConvert = s.autoConvert
+            let integ = try await api.getIntegrations()
+            sessionid = integ.cookies.sessionid
+            idc = integ.cookies.ttTargetIdc
+            hasCookies = integ.cookies.hasCookies
+            tgApiId = integ.telegram.apiId
+            tgApiHash = integ.telegram.apiHash
+            tgChatId = integ.telegram.chatId
+            hasTelegram = integ.telegram.hasTelegram
             loaded = true
         } catch {
             err = error.messageText
@@ -573,6 +667,44 @@ private struct TikConfigView: View {
                 autoConvert: autoConvert))
             note = "Saved."
             err = nil
+        } catch {
+            err = error.messageText
+        }
+    }
+
+    private func saveCookies() async {
+        do {
+            try await api.saveCookies(sessionid: sessionid, ttTargetIdc: idc)
+            hasCookies = !sessionid.isEmpty
+            note = "Cookies saved."
+            err = nil
+        } catch {
+            err = error.messageText
+        }
+    }
+
+    private func saveTelegram() async {
+        do {
+            try await api.saveTelegram(apiId: tgApiId, apiHash: tgApiHash, chatId: tgChatId)
+            hasTelegram = !tgApiId.isEmpty
+            note = "Telegram saved."
+            err = nil
+        } catch {
+            err = error.messageText
+        }
+    }
+
+    private func loadVersion() async {
+        let key = try? await api.adminKey()
+        let v = try? await api.serverVersion(key: key)
+        versionInfo = "Installed \(v?.current ?? "?") · latest \(v?.latest ?? "?")"
+    }
+
+    private func restart() async {
+        do {
+            let key = try? await api.adminKey()
+            try await api.restartServer(key: key)
+            note = "Restart signal sent — container is coming back."
         } catch {
             err = error.messageText
         }

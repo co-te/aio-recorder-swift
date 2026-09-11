@@ -90,6 +90,12 @@ struct DashboardView: View {
                     SecondaryLabel("docker container ttv-ttv-1")
                 }
                 Spacer()
+                GlassButton(title: "Refresh", icon: "arrow.clockwise", tint: Theme.blue) {
+                    Task {
+                        try? await api.refreshPoints()
+                        await load()
+                    }
+                }
                 GlassButton(title: "Restart", icon: "arrow.triangle.2.circlepath", tint: Theme.warn) {
                     Task {
                         try? await api.applyRestart()
