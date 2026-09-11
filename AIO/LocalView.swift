@@ -134,41 +134,44 @@ struct LocalView: View {
                                 .padding(.horizontal, 16)
                             }
                         }
-                        if !selection.isEmpty {
-                            GlassCard {
-                                VStack(spacing: 8) {
-                                    HStack {
-                                        SecondaryLabel("\(selection.count) selected", font: .caption)
-                                        Spacer()
-                                        if batchBusy {
-                                            ProgressView().tint(.white)
-                                            SecondaryLabel("\(batchDone)/\(selection.count)", font: .caption2)
-                                        } else {
-                                            Button("Upload all") {
-                                                Task { await pushSelected() }
-                                            }
-                                            .font(.subheadline)
-                                            .fontWeight(.semibold)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 8)
-                                            .background(Theme.blue.opacity(0.3), in: Capsule())
-                                            .foregroundStyle(Theme.textPrimary)
-                                        }
-                                    }
-                                    Toggle("Skip already-uploaded files", isOn: $skipDupes)
-                                        .font(.caption)
-                                        .tint(Theme.blue)
-                                        .foregroundStyle(Theme.textSecondary)
-                                }
-                                .padding(12)
-                            }
-                            .padding(.horizontal, 16)
-                        }
                         if let note {
                             SecondaryLabel(note, font: .caption)
                         }
                     }
                     .padding(.bottom, 24)
+                }
+
+                if !selection.isEmpty {
+                    GlassCard {
+                        VStack(spacing: 8) {
+                            HStack {
+                                SecondaryLabel("\(selection.count) selected", font: .caption)
+                                Spacer()
+                                if batchBusy {
+                                    ProgressView().tint(.white)
+                                    SecondaryLabel("\(batchDone)/\(selection.count)", font: .caption2)
+                                } else {
+                                    Button("Upload all") {
+                                        Task { await pushSelected() }
+                                    }
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Theme.blue.opacity(0.3), in: Capsule())
+                                    .foregroundStyle(Theme.textPrimary)
+                                }
+                            }
+                            Toggle("Skip already-uploaded files", isOn: $skipDupes)
+                                .font(.caption)
+                                .tint(Theme.blue)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                        .padding(12)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
                 }
             }
         }
