@@ -18,6 +18,7 @@ struct LocalView: View {
     @State private var selection = Set<String>()
     @State private var batchBusy = false
     @State private var batchDone = 0
+    @State private var skipDupes = true
 
     private var files: [TDLocalEntry] { entries.filter { !$0.isDir } }
     private var allSelected: Bool { !files.isEmpty && selection.isSuperset(of: files.map(\.path)) }
@@ -135,23 +136,29 @@ struct LocalView: View {
                         }
                         if !selection.isEmpty {
                             GlassCard {
-                                HStack {
-                                    SecondaryLabel("\(selection.count) selected", font: .caption)
-                                    Spacer()
-                                    if batchBusy {
-                                        ProgressView().tint(.white)
-                                        SecondaryLabel("\(batchDone)/\(selection.count)", font: .caption2)
-                                    } else {
-                                        Button("Upload all") {
-                                            Task { await pushSelected() }
+                                VStack(spacing: 8) {
+                                    HStack {
+                                        SecondaryLabel("\(selection.count) selected", font: .caption)
+                                        Spacer()
+                                        if batchBusy {
+                                            ProgressView().tint(.white)
+                                            SecondaryLabel("\(batchDone)/\(selection.count)", font: .caption2)
+                                        } else {
+                                            Button("Upload all") {
+                                                Task { await pushSelected() }
+                                            }
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                            .background(Theme.blue.opacity(0.3), in: Capsule())
+                                            .foregroundStyle(Theme.textPrimary)
                                         }
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
-                                        .background(Theme.blue.opacity(0.3), in: Capsule())
-                                        .foregroundStyle(Theme.textPrimary)
                                     }
+                                    Toggle("Skip already-uploaded files", isOn: $skipDupes)
+                                        .font(.caption)
+                                        .tint(Theme.blue)
+                                        .foregroundStyle(Theme.textSecondary)
                                 }
                                 .padding(12)
                             }
@@ -190,7 +197,16 @@ struct LocalView: View {
         batchBusy = true
         batchDone = 0
         defer { batchBusy = false }
-        let paths = files.filter { selection.contains($0.path) }
+        var paths = files.filter { selection.contains($0.path) }
+        var skipped = 0
+        if skipDupes, !paths.isEmpty {
+            let existing = await existingKeys(peerType: dest.peerType, peerId: dest.peerId)
+            paths = paths.filter { entry in
+                let dupe = existing.contains("\(entry.name)|\(entry.size)")
+                if dupe { skipped += 1 }
+                return !dupe
+            }
+        }
         var failed = 0
         for entry in paths {
             do {
@@ -201,9 +217,25 @@ struct LocalView: View {
             batchDone += 1
         }
         selection.removeAll()
-        note = failed == 0
-            ? "Queued \(paths.count) files → \(dest.name)"
-            : "Queued \(paths.count - failed)/\(paths.count), \(failed) failed"
+        var parts: [String] = []
+        if !paths.isEmpty { parts.append("Queued \(paths.count - failed)/\(paths.count)") }
+        if skipped > 0 { parts.append("skipped \(skipped) dupes") }
+        if failed > 0 { parts.append("\(failed) failed") }
+        note = (parts.isEmpty ? "Nothing to upload" : parts.joined(separator: ", ")) + " → \(dest.name)"
+    }
+
+    /// name|size keys of everything already in the folder (paged, capped).
+    private func existingKeys(peerType: String, peerId: Int) async -> Set<String> {
+        var keys = Set<String>()
+        var offset = 0
+        for _ in 0..<20 {
+            guard let (items, next) = try? await api.files(
+                peerType: peerType, peerId: peerId, offsetId: offset) else { break }
+            for f in items { keys.insert("\(f.name)|\(f.size)") }
+            if next <= 0 { break }
+            offset = next
+        }
+        return keys
     }
 }
 
