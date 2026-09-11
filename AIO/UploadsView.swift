@@ -15,6 +15,7 @@ struct UploadsView: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var uploading = false
     @State private var uploadNote: String?
+    @State private var pollTimer: Timer?
 
     var body: some View {
         content
@@ -38,6 +39,15 @@ struct UploadsView: View {
                 await load()
                 folders = (try? await api.folders()) ?? []
                 if target == nil { target = folders.first }
+                // Live progress: repoll while visible, no pull needed.
+                pollTimer?.invalidate()
+                pollTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { _ in
+                    Task { await loadQuiet() }
+                }
+            }
+            .onDisappear {
+                pollTimer?.invalidate()
+                pollTimer = nil
             }
             .onChange(of: pickerItem) { item in
                 guard let item else { return }
@@ -122,6 +132,13 @@ struct UploadsView: View {
             errorText = nil
         } catch {
             errorText = error.messageText
+        }
+    }
+
+    /// Background poll: never flashes errors, never clears the list.
+    private func loadQuiet() async {
+        if let fresh = try? await api.uploadJobs() {
+            jobs = fresh
         }
     }
 

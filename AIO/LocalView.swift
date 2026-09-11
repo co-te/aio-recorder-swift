@@ -15,6 +15,12 @@ struct LocalView: View {
     @State private var loading = false
     @State private var errorText: String?
     @State private var note: String?
+    @State private var selection = Set<String>()
+    @State private var batchBusy = false
+    @State private var batchDone = 0
+
+    private var files: [TDLocalEntry] { entries.filter { !$0.isDir } }
+    private var allSelected: Bool { !files.isEmpty && selection.isSuperset(of: files.map(\.path)) }
 
     private var crumbs: [(label: String, path: String)] {
         var out = [(label: "Root", path: "")]
@@ -31,6 +37,18 @@ struct LocalView: View {
         content
             .background(AppBackground())
             .navigationTitle("Local drive")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(allSelected ? "Clear" : "Select all") {
+                        if allSelected {
+                            selection.removeAll()
+                        } else {
+                            selection.formUnion(files.map(\.path))
+                        }
+                    }
+                    .disabled(files.isEmpty)
+                }
+            }
             .refreshable { await load() }
             .task {
                 await load()
@@ -99,16 +117,45 @@ struct LocalView: View {
                             .padding(.horizontal, 16)
                         } else {
                             ForEach(entries) { e in
-                                LocalRow(entry: e) {
+                                LocalRow(entry: e, selected: selection.contains(e.path)) {
                                     if e.isDir {
                                         path = e.path
+                                        selection.removeAll()
                                         Task { await load() }
                                     } else {
-                                        Task { await push(e) }
+                                        if selection.contains(e.path) {
+                                            selection.remove(e.path)
+                                        } else {
+                                            selection.insert(e.path)
+                                        }
                                     }
                                 }
                                 .padding(.horizontal, 16)
                             }
+                        }
+                        if !selection.isEmpty {
+                            GlassCard {
+                                HStack {
+                                    SecondaryLabel("\(selection.count) selected", font: .caption)
+                                    Spacer()
+                                    if batchBusy {
+                                        ProgressView().tint(.white)
+                                        SecondaryLabel("\(batchDone)/\(selection.count)", font: .caption2)
+                                    } else {
+                                        Button("Upload all") {
+                                            Task { await pushSelected() }
+                                        }
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(Theme.blue.opacity(0.3), in: Capsule())
+                                        .foregroundStyle(Theme.textPrimary)
+                                    }
+                                }
+                                .padding(12)
+                            }
+                            .padding(.horizontal, 16)
                         }
                         if let note {
                             SecondaryLabel(note, font: .caption)
@@ -132,19 +179,31 @@ struct LocalView: View {
                 return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
             }
             errorText = nil
+            selection.formIntersection(entries.map(\.path))
         } catch {
             errorText = error.messageText
         }
     }
 
-    private func push(_ entry: TDLocalEntry) async {
-        guard let dest = target else { return }
-        do {
-            try await api.localUpload(path: entry.path, peerType: dest.peerType, peerId: dest.peerId)
-            note = "Queued \(entry.name) → \(dest.name)"
-        } catch {
-            note = error.messageText
+    private func pushSelected() async {
+        guard let dest = target, !selection.isEmpty else { return }
+        batchBusy = true
+        batchDone = 0
+        defer { batchBusy = false }
+        let paths = files.filter { selection.contains($0.path) }
+        var failed = 0
+        for entry in paths {
+            do {
+                try await api.localUpload(path: entry.path, peerType: dest.peerType, peerId: dest.peerId)
+            } catch {
+                failed += 1
+            }
+            batchDone += 1
         }
+        selection.removeAll()
+        note = failed == 0
+            ? "Queued \(paths.count) files → \(dest.name)"
+            : "Queued \(paths.count - failed)/\(paths.count), \(failed) failed"
     }
 }
 
@@ -152,12 +211,18 @@ struct LocalView: View {
 
 private struct LocalRow: View {
     let entry: TDLocalEntry
+    let selected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             GlassCard {
                 HStack(spacing: 12) {
+                    if !entry.isDir {
+                        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(selected ? Theme.blue : Theme.textSecondary)
+                            .frame(width: 24)
+                    }
                     Image(systemName: entry.isDir ? "folder.fill" : "doc.fill")
                         .foregroundStyle(entry.isDir ? Theme.blue : Theme.textSecondary)
                         .frame(width: 28)
@@ -171,9 +236,11 @@ private struct LocalRow: View {
                         }
                     }
                     Spacer()
-                    Image(systemName: entry.isDir ? "chevron.right" : "icloud.and.arrow.up")
-                        .font(.caption)
-                        .foregroundStyle(Theme.textSecondary)
+                    if entry.isDir {
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
                 }
                 .padding(12)
             }
