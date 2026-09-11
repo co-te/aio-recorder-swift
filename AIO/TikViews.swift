@@ -559,6 +559,8 @@ private struct TikConfigView: View {
     @State private var hasTelegram = false
     @State private var versionInfo = ""
     @State private var confirmRestart = false
+    @State private var proxyInfo = ""
+    @State private var proxyManual = ""
 
     var body: some View {
         ScrollView {
@@ -632,6 +634,32 @@ private struct TikConfigView: View {
                         Task { await restart() }
                     }
                 }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        CardHeader(title: "Proxy rotation", icon: "network")
+                        if proxyInfo.isEmpty {
+                            SecondaryLabel("Tap refresh for pool status.", font: .caption)
+                        } else {
+                            SecondaryLabel(proxyInfo, font: .caption)
+                        }
+                        GlassField(icon: "lock", placeholder: "Fixed proxy override (blank = auto)", text: $proxyManual)
+                        HStack(spacing: 10) {
+                            GlassButton(title: "Status", icon: "arrow.clockwise", tint: Theme.blue) {
+                                Task { await loadProxy() }
+                            }
+                            GlassButton(title: "Rotate", icon: "arrow.triangle.2.circlepath", tint: Theme.warn) {
+                                Task { await rotateProxy() }
+                            }
+                        }
+                        HStack {
+                            GlassButton(title: "Save override", icon: "checkmark", tint: Theme.blue) {
+                                Task { await saveProxyOverride() }
+                            }
+                            Spacer()
+                        }
+                    }
+                }
                 if let note {
                     SecondaryLabel(note, font: .caption)
                 }
@@ -652,6 +680,7 @@ private struct TikConfigView: View {
             outputDir = s.outputDir
             quality = s.defaultQuality
             proxy = s.proxy
+            proxyManual = s.proxy
             interval = String(s.defaultInterval)
             autoConvert = s.autoConvert
             let integ = try await api.getIntegrations()
@@ -717,6 +746,43 @@ private struct TikConfigView: View {
             let key = try? await api.adminKey()
             try await api.restartServer(key: key)
             note = "Restart signal sent — container is coming back."
+        } catch {
+            err = error.messageText
+        }
+    }
+
+    private func loadProxy() async {
+        do {
+            let p = try await api.proxyStatus()
+            proxyInfo = "\(p.current) · pool \(p.poolSize) · rotations \(p.rotations)" + (p.lastError.isEmpty ? "" : "\n\(p.lastError)")
+            err = nil
+        } catch {
+            err = error.messageText
+        }
+    }
+
+    private func rotateProxy() async {
+        do {
+            let cur = try await api.rotateProxy()
+            proxyInfo = "Now using \(cur)"
+        } catch {
+            err = error.messageText
+        }
+    }
+
+    private func saveProxyOverride() async {
+        // Reuses the main settings save with the proxy field patched.
+        do {
+            try await api.saveSettings(TikSettingsData(
+                outputDir: outputDir,
+                defaultQuality: quality,
+                proxy: proxyManual.trimmingCharacters(in: .whitespaces),
+                defaultDuration: nil,
+                defaultInterval: Int(interval) ?? 3,
+                autoConvert: autoConvert))
+            proxy = proxyManual.trimmingCharacters(in: .whitespaces)
+            note = proxyManual.isEmpty ? "Auto rotation enabled." : "Fixed proxy saved."
+            err = nil
         } catch {
             err = error.messageText
         }

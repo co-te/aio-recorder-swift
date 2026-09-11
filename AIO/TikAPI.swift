@@ -342,4 +342,30 @@ final class TikAPI {
     func restartServer(key: String?) async throws {
         _ = try await sendDict(adminReq("POST", "/admin/restart", key: key))
     }
+
+    // ---- proxy pool ----
+
+    struct ProxyStatus: Decodable {
+        let manual: Bool
+        let current: String
+        let poolSize: Int
+        let failures: Int
+        let rotations: Int
+        let lastError: String
+
+        enum CodingKeys: String, CodingKey {
+            case manual, current, failures, rotations
+            case poolSize = "pool_size"
+            case lastError = "last_error"
+        }
+    }
+
+    func proxyStatus() async throws -> ProxyStatus {
+        try await send(ProxyStatus.self, req("GET", "/api/proxy/status"))
+    }
+
+    func rotateProxy() async throws -> String {
+        struct Resp: Decodable { let current: String? }
+        return (try? await send(Resp.self, req("POST", "/api/proxy/rotate")).current) ?? "direct"
+    }
 }
