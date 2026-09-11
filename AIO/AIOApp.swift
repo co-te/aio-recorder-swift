@@ -82,20 +82,22 @@ struct AIOShell: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            TikRootView(api: tikAPI)
+            NavigationStack { TikRootView(api: tikAPI) }
                 .tabItem { Label("Tik", systemImage: "video.fill") }.tag(0)
-            TangoRootView(api: tangoAPI)
+            NavigationStack { TangoRootView(api: tangoAPI) }
                 .tabItem { Label("Tango", systemImage: "phone.fill") }.tag(1)
-            MinerRootView(api: minerAPI)
+            NavigationStack { MinerRootView(api: minerAPI) }
                 .tabItem { Label("Miner", systemImage: "diamond.fill") }.tag(2)
-            DriveRootView(api: driveAPI)
+            NavigationStack { DriveRootView(api: driveAPI) }
                 .tabItem { Label("Drive", systemImage: "externaldrive.fill") }.tag(3)
-            AIOSettingsView(settings: $settings) { updated in
-                settings = updated
-                tikAPI = TikAPI(settings: updated.tik)
-                tangoAPI = TangoAPI(settings: updated.tango)
-                minerAPI = MinerAPI(settings: updated.miner)
-                driveAPI = DriveAPI(settings: updated.drive)
+            NavigationStack {
+                AIOSettingsView(settings: $settings) { updated in
+                    settings = updated
+                    tikAPI = TikAPI(settings: updated.tik)
+                    tangoAPI = TangoAPI(settings: updated.tango)
+                    minerAPI = MinerAPI(settings: updated.miner)
+                    driveAPI = DriveAPI(settings: updated.drive)
+                }
             }
             .tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
         }
