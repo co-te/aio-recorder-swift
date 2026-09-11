@@ -1,0 +1,504 @@
+//
+//  TikViews.swift — sources (monitors), active recordings, history, settings.
+//
+
+import SwiftUI
+
+struct TikRootView: View {
+    let api: TikAPI
+    @State private var section = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("Section", selection: $section) {
+                Text("Sources").tag(0)
+                Text("Recording").tag(1)
+                Text("History").tag(2)
+                Text("Config").tag(3)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            switch section {
+            case 0: TikSourcesView(api: api)
+            case 1: TikActiveView(api: api)
+            case 2: TikHistoryView(api: api)
+            default: TikConfigView(api: api)
+            }
+        }
+        .background(AppBackground())
+        .navigationTitle("Tik recorder")
+    }
+}
+
+// MARK: - Sources
+
+private struct TikSourcesView: View {
+    let api: TikAPI
+
+    @State private var items: [TikSource] = []
+    @State private var errorText: String?
+    @State private var showAdd = false
+    @State private var logSource: TikSource?
+
+    var body: some View {
+        content
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showAdd = true } label: { Image(systemName: "plus") }
+                }
+            }
+            .refreshable { await load() }
+            .task { await load() }
+            .sheet(isPresented: $showAdd, onDismiss: { Task { await load() } }) {
+                TikAddSourceSheet(api: api)
+            }
+            .sheet(item: $logSource) { s in
+                TikLogSheet(api: api, source: s)
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let err = errorText, items.isEmpty {
+            ErrorStateView(message: err) { Task { await load() } }
+        } else {
+            ScrollView {
+                VStack(spacing: 10) {
+                    if items.isEmpty {
+                        GlassCard {
+                            SecondaryLabel("No sources — tap + to monitor someone.")
+                                .frame(maxWidth: .infinity)
+                                .padding(24)
+                        }
+                    } else {
+                        ForEach(items) { s in
+                            TikSourceCard(api: api, source: s,
+                                          onLog: { logSource = s },
+                                          onChange: { Task { await load() } })
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
+            }
+        }
+    }
+
+    private func load() async {
+        do {
+            items = try await api.sources()
+            errorText = nil
+        } catch {
+            errorText = error.messageText
+        }
+    }
+}
+
+private struct TikSourceCard: View {
+    let api: TikAPI
+    let source: TikSource
+    let onLog: () -> Void
+    let onChange: () -> Void
+    @State private var confirm = false
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: source.platform == "twitch" ? "tv.fill" : "music.note")
+                        .foregroundStyle(source.platform == "twitch" ? Theme.twitch : Theme.textPrimary)
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.07), in: Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("@\(source.user)")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Theme.textPrimary)
+                        SecondaryLabel(
+                            "\(source.platform) · every \(source.interval)s · \(source.quality ?? "best")",
+                            font: .caption2)
+                    }
+                    Spacer()
+                    StatusPill(
+                        text: source.currentlyLive ? "LIVE" : (source.enabled ? "watching" : "paused"),
+                        color: source.currentlyLive ? Theme.red : (source.enabled ? Theme.green : Theme.textSecondary))
+                }
+
+                if let err = source.lastError, !err.isEmpty {
+                    Text(err)
+                        .font(.caption2)
+                        .foregroundStyle(Theme.warn)
+                        .lineLimit(2)
+                }
+                if let check = source.lastCheck, !check.isEmpty {
+                    SecondaryLabel("Checked \(Fmt.iso(check))", font: .caption2)
+                }
+
+                HStack(spacing: 8) {
+                    Button(source.enabled ? "Pause" : "Resume") {
+                        Task {
+                            try? await api.updateSource(source.id, enabled: !source.enabled)
+                            onChange()
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+
+                    Button("Check now") {
+                        Task {
+                            try? await api.checkNow(source.id)
+                            onChange()
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Theme.blue)
+
+                    Button("Record now") {
+                        Task {
+                            try? await api.startNow(source.id)
+                            onChange()
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Theme.red)
+
+                    Spacer()
+
+                    Button { onLog() } label: {
+                        Image(systemName: "doc.text")
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    Button(role: .destructive) { confirm = true } label: {
+                        Image(systemName: "trash")
+                    }
+                    .tint(.red)
+                }
+            }
+            .padding(14)
+        }
+        .confirmationDialog("Remove @\(source.user)?", isPresented: $confirm, titleVisibility: .visible) {
+            Button("Remove", role: .destructive) {
+                Task {
+                    try? await api.deleteSource(source.id)
+                    onChange()
+                }
+            }
+        }
+    }
+}
+
+private struct TikAddSourceSheet: View {
+    let api: TikAPI
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var platform = "tiktok"
+    @State private var user = ""
+    @State private var busy = false
+    @State private var err: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Source") {
+                    Picker("Platform", selection: $platform) {
+                        Text("TikTok").tag("tiktok")
+                        Text("Twitch").tag("twitch")
+                    }
+                    TextField("Username (without @)", text: $user)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                if let err {
+                    Section { Text(err).foregroundStyle(.red).font(.caption) }
+                }
+            }
+            .navigationTitle("Monitor source")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") { Task { await add() } }
+                        .disabled(busy || user.isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func add() async {
+        busy = true
+        defer { busy = false }
+        do {
+            try await api.addSource(platform: platform,
+                                    user: user.trimmingCharacters(in: .whitespaces))
+            dismiss()
+        } catch {
+            err = error.messageText
+        }
+    }
+}
+
+private struct TikLogSheet: View {
+    let api: TikAPI
+    let source: TikSource
+    @State private var lines: [String] = []
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 3) {
+                    if lines.isEmpty {
+                        SecondaryLabel("No log lines.")
+                    } else {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                            Text(line)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Theme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .padding()
+            }
+            .background(AppBackground())
+            .navigationTitle("@\(source.user) log")
+            .navigationBarTitleDisplayMode(.inline)
+            .task {
+                lines = (try? await api.monitorLog(source.id)) ?? []
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+// MARK: - Active
+
+private struct TikActiveView: View {
+    let api: TikAPI
+
+    @State private var items: [TikRecording] = []
+    @State private var errorText: String?
+
+    var body: some View {
+        content
+            .refreshable { await load() }
+            .task { await load() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let err = errorText, items.isEmpty {
+            ErrorStateView(message: err) { Task { await load() } }
+        } else {
+            ScrollView {
+                VStack(spacing: 10) {
+                    if items.isEmpty {
+                        GlassCard {
+                            VStack(spacing: 8) {
+                                Image(systemName: "record.circle")
+                                    .font(.largeTitle)
+                                    .foregroundStyle(Theme.textSecondary)
+                                SecondaryLabel("Nothing recording right now.")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(24)
+                        }
+                    } else {
+                        ForEach(items) { r in
+                            TikRecordingCard(name: "@\(r.user)",
+                                             detail: "\(r.platform) · \(Fmt.duration(r.elapsed)) · \(Fmt.bytes(r.sizeBytes))",
+                                             status: r.status,
+                                             color: Theme.red) {
+                                Task {
+                                    try? await api.stopRecording(r.id)
+                                    await load()
+                                }
+                            } stopTitle: { "Stop" }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
+            }
+        }
+    }
+
+    private func load() async {
+        do {
+            items = try await api.active()
+            errorText = nil
+        } catch {
+            errorText = error.messageText
+        }
+    }
+}
+
+// MARK: - History
+
+private struct TikHistoryView: View {
+    let api: TikAPI
+
+    @State private var items: [TikRecording] = []
+    @State private var errorText: String?
+
+    var body: some View {
+        content
+            .refreshable { await load() }
+            .task { await load() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let err = errorText, items.isEmpty {
+            ErrorStateView(message: err) { Task { await load() } }
+        } else {
+            ScrollView {
+                VStack(spacing: 10) {
+                    if items.isEmpty {
+                        GlassCard {
+                            SecondaryLabel("No past recordings.")
+                                .frame(maxWidth: .infinity)
+                                .padding(24)
+                        }
+                    } else {
+                        ForEach(items.prefix(50)) { r in
+                            TikRecordingCard(name: "@\(r.user)",
+                                             detail: "\(Fmt.iso(r.startTime)) · \(Fmt.duration(r.elapsed)) · \(Fmt.bytes(r.sizeBytes))",
+                                             status: r.status,
+                                             color: r.status == "completed" ? Theme.green : Theme.warn) {
+                                Task {
+                                    try? await api.deleteRecording(r.id)
+                                    await load()
+                                }
+                            } stopTitle: { "Delete" }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
+            }
+        }
+    }
+
+    private func load() async {
+        do {
+            items = try await api.history()
+            errorText = nil
+        } catch {
+            errorText = error.messageText
+        }
+    }
+}
+
+private struct TikRecordingCard: View {
+    let name: String
+    let detail: String
+    let status: String
+    let color: Color
+    let onAction: () -> Void
+    let stopTitle: () -> String
+
+    var body: some View {
+        GlassCard {
+            HStack(spacing: 12) {
+                Image(systemName: "record.circle.fill")
+                    .foregroundStyle(color)
+                    .font(.title2)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(name)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Theme.textPrimary)
+                    SecondaryLabel(detail, font: .caption2)
+                }
+                Spacer()
+                VStack(spacing: 6) {
+                    StatusPill(text: status, color: color)
+                    Button(stopTitle()) { onAction() }
+                        .font(.caption2)
+                        .foregroundStyle(Theme.red)
+                }
+            }
+            .padding(14)
+        }
+    }
+}
+
+// MARK: - Config
+
+private struct TikConfigView: View {
+    let api: TikAPI
+
+    @State private var outputDir = ""
+    @State private var quality = "best"
+    @State private var proxy = ""
+    @State private var interval = "2"
+    @State private var autoConvert = true
+    @State private var loaded = false
+    @State private var note: String?
+    @State private var err: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        CardHeader(title: "Recorder defaults", icon: "slider.horizontal.3")
+                        GlassField(icon: "folder", placeholder: "Output dir", text: $outputDir)
+                        GlassField(icon: "sparkles", placeholder: "Quality (best, 1080p…)", text: $quality)
+                        GlassField(icon: "network", placeholder: "Proxy (optional)", text: $proxy)
+                        GlassField(icon: "timer", placeholder: "Check interval seconds", text: $interval, keyboard: .numberPad)
+                        Toggle("Auto-convert to MP4", isOn: $autoConvert)
+                            .tint(Theme.blue)
+                            .foregroundStyle(Theme.textPrimary)
+                    }
+                }
+                GlassButton(title: "Save", icon: "checkmark", tint: Theme.blue, prominent: true) {
+                    Task { await save() }
+                }
+                .frame(maxWidth: .infinity)
+                if let note {
+                    SecondaryLabel(note, font: .caption)
+                }
+                if let err {
+                    Text(err).font(.caption).foregroundStyle(Theme.red)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard !loaded else { return }
+        do {
+            let s = try await api.getSettings()
+            outputDir = s.outputDir
+            quality = s.defaultQuality
+            proxy = s.proxy
+            interval = String(s.defaultInterval)
+            autoConvert = s.autoConvert
+            loaded = true
+        } catch {
+            err = error.messageText
+        }
+    }
+
+    private func save() async {
+        do {
+            try await api.saveSettings(TikSettingsData(
+                outputDir: outputDir,
+                defaultQuality: quality,
+                proxy: proxy,
+                defaultDuration: nil,
+                defaultInterval: Int(interval) ?? 2,
+                autoConvert: autoConvert))
+            note = "Saved."
+            err = nil
+        } catch {
+            err = error.messageText
+        }
+    }
+}
