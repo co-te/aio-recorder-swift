@@ -35,6 +35,7 @@ struct AIOSettings: Equatable {
 
 @main
 struct AIOApp: App {
+    @UIApplicationDelegateAdaptor(PushRegistrar.self) var pushDelegate
     @State private var settings: AIOSettings
     @State private var connected: Bool
 
@@ -123,6 +124,8 @@ struct AIOShell: View {
         }
         .task {
             await LiveMonitor.requestAuth()
+            PushRegistrar.register()
+            PushRegistrar.shared.reupload()
             monitor.configure(tik: tikAPI, tango: tangoAPI, miner: minerAPI)
             monitor.start()
         }
@@ -284,6 +287,11 @@ struct AIOSettingsView: View {
                             Spacer()
                         }
                         SecondaryLabel("Local only — fires while the app is open or backgrounded. iOS suspends it ~30s after close; no push server.", font: .caption2)
+                        if let tok = PushRegistrar.shared.lastToken, !tok.isEmpty {
+                            SecondaryLabel("Closed-app push: registered (token \(String(tok.prefix(8)))…) → Pi :8020.", font: .caption2)
+                        } else {
+                            SecondaryLabel("Closed-app push: not registered — needs the signed build + Pi push server.", font: .caption2)
+                        }
                     }
                 }
 
