@@ -70,6 +70,7 @@ struct AIOShell: View {
     @State private var driveAPI: DriveAPI
     @State private var tab = 0
     @State private var toast: String?
+    @State private var monitor = LiveMonitor()
 
     init(settings: Binding<AIOSettings>) {
         _settings = settings
@@ -119,6 +120,15 @@ struct AIOShell: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .driveToast)) { note in
             showToast(note.object as? String ?? "Done")
+        }
+        .task {
+            await LiveMonitor.requestAuth()
+            monitor.configure(tik: tikAPI, tango: tangoAPI, miner: minerAPI)
+            monitor.start()
+        }
+        .onChange(of: settings) { _ in
+            monitor.configure(tik: tikAPI, tango: tangoAPI, miner: minerAPI)
+            monitor.start()
         }
     }
 
@@ -211,6 +221,10 @@ struct AIOSettingsView: View {
     @State private var maxConc = 2
     @State private var driveNote: String?
     @State private var confirmLogout = false
+    @AppStorage("notify_tik") private var notifyTik = true
+    @AppStorage("notify_tango") private var notifyTango = true
+    @AppStorage("notify_miner") private var notifyMiner = true
+    @AppStorage("notify_interval") private var notifyInterval = 60
 
     private var driveAPI: DriveAPI { DriveAPI(settings: current().drive) }
 
@@ -245,6 +259,31 @@ struct AIOSettingsView: View {
                         GlassField(icon: "wifi", placeholder: "Pi IP", text: $driveHost, keyboard: .decimalPad)
                         GlassField(icon: "number", placeholder: "Port (8001)", text: $drivePort, keyboard: .numberPad)
                         GlassField(icon: "key.fill", placeholder: "API token", text: $driveToken, secure: true)
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        CardHeader(title: "Live alerts", icon: "bell.fill")
+                        Toggle("Tik/Twitch goes live", isOn: $notifyTik)
+                            .foregroundStyle(Theme.textPrimary)
+                        Toggle("Tango goes live", isOn: $notifyTango)
+                            .foregroundStyle(Theme.textPrimary)
+                        Toggle("Twitch miner goes live", isOn: $notifyMiner)
+                            .foregroundStyle(Theme.textPrimary)
+                        Stepper("Check every \(notifyInterval)s", value: $notifyInterval, in: 30...300, step: 30)
+                            .foregroundStyle(Theme.textPrimary)
+                        HStack {
+                            GlassButton(title: "Enable notis", icon: "bell", tint: Theme.blue) {
+                                Task { await LiveMonitor.requestAuth() }
+                            }
+                            GlassButton(title: "Test", icon: "sparkles", tint: Theme.green) {
+                                Task { _ = await LiveMonitor.requestAuth() }
+                                LiveMonitor.test()
+                            }
+                            Spacer()
+                        }
+                        SecondaryLabel("Local only — fires while the app is open or backgrounded. iOS suspends it ~30s after close; no push server.", font: .caption2)
                     }
                 }
 
