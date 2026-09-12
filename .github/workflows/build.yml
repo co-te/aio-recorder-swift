@@ -31,7 +31,8 @@ jobs:
               type: application
               platform: iOS
               sources: [AIO]
-              entitlements: AIO/AIO.entitlements
+              entitlements:
+                path: AIO/AIO.entitlements
               settings:
                 base:
                   INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
