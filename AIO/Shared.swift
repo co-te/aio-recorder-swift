@@ -179,6 +179,31 @@ struct FileRow: View {
     }
 }
 
+// MARK: - Foreground auto-refresh
+
+private struct PollModifier: ViewModifier {
+    let seconds: UInt64
+    let action: () async -> Void
+
+    func body(content: Content) -> some View {
+        content.task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                await action()
+            }
+        }
+    }
+}
+
+extension View {
+    /// Re-runs `action` every `seconds` while the view is on screen.
+    /// Foreground only — iOS suspends it with the app, same as everything else.
+    func polling(every seconds: UInt64, _ action: @escaping () async -> Void) -> some View {
+        modifier(PollModifier(seconds: seconds, action: action))
+    }
+}
+
 // MARK: - Status pill
 
 struct StatusPill: View {

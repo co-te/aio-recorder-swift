@@ -59,6 +59,7 @@ private struct TangoWatchlistView: View {
             }
             .refreshable { await load() }
             .task { await load() }
+            .polling(every: 60) { await load() }
             .sheet(isPresented: $showAdd, onDismiss: { Task { await load() } }) {
                 TangoAddSheet(api: api)
             }
@@ -301,6 +302,7 @@ private struct TangoRecordingsView: View {
         content
             .refreshable { await load() }
             .task { await load() }
+            .polling(every: 60) { await load() }
             .sheet(item: $shareTarget) { target in
                 ShareSheet(url: target.url)
             }

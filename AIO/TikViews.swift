@@ -52,6 +52,7 @@ private struct TikSourcesView: View {
             }
             .refreshable { await load() }
             .task { await load() }
+            .polling(every: 60) { await load() }
             .sheet(isPresented: $showAdd, onDismiss: { Task { await load() } }) {
                 TikAddSourceSheet(api: api)
             }
@@ -396,6 +397,7 @@ private struct TikActiveView: View {
         content
             .refreshable { await load() }
             .task { await load() }
+            .polling(every: 30) { await load() }
     }
 
     @ViewBuilder
@@ -458,6 +460,7 @@ private struct TikHistoryView: View {
         content
             .refreshable { await load() }
             .task { await load() }
+            .polling(every: 60) { await load() }
     }
 
     @ViewBuilder
