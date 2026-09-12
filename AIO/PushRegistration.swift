@@ -54,7 +54,7 @@ final class PushRegistrar: NSObject, UIApplicationDelegate {
         req.timeoutInterval = 10
         req.httpBody = try? JSONSerialization.data(withJSONObject: [
             "token": token,
-            "bundle": Bundle.main.bundleIdentifier ?? "com.orhogi.AIO",
+            "bundle": Bundle.main.bundleIdentifier ?? "app.coral8757.pisces1195",
         ])
         _ = try? await URLSession.shared.data(for: req)
     }
