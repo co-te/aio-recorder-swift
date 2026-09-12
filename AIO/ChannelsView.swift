@@ -23,7 +23,6 @@ struct ChannelsView: View {
             }
             .refreshable { await load() }
             .task { await load() }
-            .polling(every: 60) { await load() }
             .sheet(isPresented: $showAdd, onDismiss: { Task { await load() } }) {
                 AddChannelSheet(api: api)
             }
