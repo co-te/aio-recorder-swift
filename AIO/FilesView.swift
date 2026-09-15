@@ -16,6 +16,7 @@ struct FilesView: View {
     @State private var loadingFiles = false
     @State private var errorText: String?
     @State private var showCreate = false
+    @State private var pollTimer: Timer?
     @State private var detail: TDFile?
 
     var body: some View {
@@ -28,7 +29,17 @@ struct FilesView: View {
                 }
             }
             .refreshable { await reload() }
-            .task { await reload() }
+            .task {
+                await reload()
+                pollTimer?.invalidate()
+                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+                    Task { await reload() }
+                }
+            }
+            .onDisappear {
+                pollTimer?.invalidate()
+                pollTimer = nil
+            }
             .sheet(isPresented: $showCreate, onDismiss: { Task { await loadFolders() } }) {
                 CreateFolderSheet(api: api)
             }

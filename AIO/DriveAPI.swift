@@ -480,6 +480,21 @@ final class DriveAPI {
         try await authedData(path: "/api/thumb/\(file.peerType)/\(file.peerId)/\(file.id)")
     }
 
+    /// Recording-archiver progress (status.json written by the Pi script).
+    func archiverStatus() async throws -> ArchiverStatus {
+        var comps = URLComponents(string: settings.baseURL + "/api/local/file")!
+        comps.queryItems = [URLQueryItem(name: "path", value: "recording-archiver/status.json")]
+        var req = URLRequest(url: comps.url!)
+        req.allHTTPHeaderFields = bearer
+        req.timeoutInterval = 15
+        let (data, resp) = try await session.data(for: req)
+        guard (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) else {
+            throw APIError(statusCode: (resp as? HTTPURLResponse)?.statusCode ?? 0,
+                           message: "Archiver status unavailable")
+        }
+        return try decoder.decode(ArchiverStatus.self, from: data)
+    }
+
     func downloadToTemp(_ file: TDFile) async throws -> URL {
         let data = try await authedData(path: "/api/download/\(file.peerType)/\(file.peerId)/\(file.id)")
         let dest = FileManager.default.temporaryDirectory.appendingPathComponent(file.name)

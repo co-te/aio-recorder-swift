@@ -171,6 +171,7 @@ struct DriveRootView: View {
                 Text("Uploads").tag(2)
                 Text("Local").tag(3)
                 Text("Logs").tag(4)
+                Text("Archiver").tag(5)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
@@ -181,6 +182,7 @@ struct DriveRootView: View {
             case 1: ViewsView(api: api)
             case 2: UploadsView(api: api)
             case 3: LocalView(api: api)
+            case 5: ArchiverView(api: api)
             default: DriveLogsView(api: api)
             }
         }

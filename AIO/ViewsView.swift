@@ -26,6 +26,7 @@ struct ViewsView: View {
     @State private var errorText: String?
     @State private var detail: TDFile?
     @State private var showCreateGroup = false
+    @State private var pollTimer: Timer?
     @State private var newGroupName = ""
 
     var body: some View {
@@ -36,6 +37,14 @@ struct ViewsView: View {
             .task {
                 groups = (try? await api.groups()) ?? []
                 await load()
+                pollTimer?.invalidate()
+                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+                    Task { await load() }
+                }
+            }
+            .onDisappear {
+                pollTimer?.invalidate()
+                pollTimer = nil
             }
             .sheet(item: $detail) { f in
                 FileDetailSheet(api: api, file: f)

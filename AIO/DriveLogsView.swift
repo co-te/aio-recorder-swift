@@ -10,13 +10,24 @@ struct DriveLogsView: View {
     @State private var entries: [TDLogEntry] = []
     @State private var errorText: String?
     @State private var filter = ""
+    @State private var pollTimer: Timer?
 
     var body: some View {
         content
             .background(AppBackground())
             .navigationTitle("Logs")
             .refreshable { await load() }
-            .task { await load() }
+            .task {
+                await load()
+                pollTimer?.invalidate()
+                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+                    Task { await load() }
+                }
+            }
+            .onDisappear {
+                pollTimer?.invalidate()
+                pollTimer = nil
+            }
     }
 
     @ViewBuilder

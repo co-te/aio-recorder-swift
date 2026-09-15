@@ -19,6 +19,7 @@ struct LocalView: View {
     @State private var batchBusy = false
     @State private var batchDone = 0
     @State private var skipDupes = true
+    @State private var pollTimer: Timer?
 
     private var files: [TDLocalEntry] { entries.filter { !$0.isDir } }
     private var allSelected: Bool { !files.isEmpty && selection.isSuperset(of: files.map(\.path)) }
@@ -55,6 +56,14 @@ struct LocalView: View {
                 await load()
                 folders = (try? await api.folders()) ?? []
                 if target == nil { target = folders.first }
+                pollTimer?.invalidate()
+                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+                    Task { await load() }
+                }
+            }
+            .onDisappear {
+                pollTimer?.invalidate()
+                pollTimer = nil
             }
     }
 

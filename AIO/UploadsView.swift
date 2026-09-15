@@ -41,7 +41,7 @@ struct UploadsView: View {
                 if target == nil { target = folders.first }
                 // Live progress: repoll while visible, no pull needed.
                 pollTimer?.invalidate()
-                pollTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { _ in
+                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
                     Task { await loadQuiet() }
                 }
             }
