@@ -495,6 +495,21 @@ final class DriveAPI {
         return try decoder.decode(ArchiverStatus.self, from: data)
     }
 
+    /// Ask the Pi to run the archiver now (systemd path unit picks it up).
+    func archiverRun() async throws -> String {
+        var req = URLRequest(url: URL(string: settings.baseURL + "/api/archiver/run")!)
+        req.httpMethod = "POST"
+        req.allHTTPHeaderFields = bearer
+        req.timeoutInterval = 15
+        let (data, resp) = try await session.data(for: req)
+        guard (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) else {
+            throw APIError(statusCode: (resp as? HTTPURLResponse)?.statusCode ?? 0,
+                           message: "Run request failed")
+        }
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return (obj?["state"] as? String) ?? "requested"
+    }
+
     func downloadToTemp(_ file: TDFile) async throws -> URL {
         let data = try await authedData(path: "/api/download/\(file.peerType)/\(file.peerId)/\(file.id)")
         let dest = FileManager.default.temporaryDirectory.appendingPathComponent(file.name)

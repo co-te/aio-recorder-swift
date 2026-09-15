@@ -35,6 +35,8 @@ struct ArchiverView: View {
     @State private var status: ArchiverStatus?
     @State private var errorText: String?
     @State private var pollTimer: Timer?
+    @State private var runNote: String?
+    @State private var runBusy = false
 
     var body: some View {
         content
@@ -67,6 +69,26 @@ struct ArchiverView: View {
         } else {
             ScrollView {
                 VStack(spacing: 12) {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            CardHeader(title: "Manual run", icon: "play.circle")
+                            Button {
+                                Task { await runNow() }
+                            } label: {
+                                Label(runBusy ? "Requesting…" : "Run archiver now",
+                                      systemImage: "bolt.fill")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Theme.blue.opacity(0.25), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .foregroundStyle(Theme.textPrimary)
+                            }
+                            .disabled(runBusy)
+                            if let runNote {
+                                SecondaryLabel(runNote, font: .caption)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
                     if let a = status?.active {
                         GlassCard {
                             VStack(alignment: .leading, spacing: 10) {
@@ -131,6 +153,17 @@ struct ArchiverView: View {
         if let s = try? await api.archiverStatus() {
             status = s
             errorText = nil
+        }
+    }
+
+    private func runNow() async {
+        runBusy = true
+        defer { runBusy = false }
+        do {
+            let state = try await api.archiverRun()
+            runNote = state == "already-requested" ? "Run already requested" : "Run requested — starting shortly"
+        } catch {
+            runNote = "Request failed: \(error.messageText)"
         }
     }
 }
