@@ -142,7 +142,7 @@ struct DriveSettings: Equatable {
     var port: Int
     var token: String
 
-    static let defaults = DriveSettings(host: "192.168.110.58", port: 8001, token: "")
+    static let defaults = DriveSettings(host: "", port: 8001, token: "")
 
     var baseURL: String { "http://\(host):\(port)" }
 
@@ -187,30 +187,41 @@ final class DriveAPI {
         return h
     }
 
-    private func url(_ path: String, _ query: [String: String] = [:]) -> URL {
-        var comps = URLComponents(string: settings.baseURL + path)!
+    private func url(_ path: String, _ query: [String: String] = [:]) throws -> URL {
+        guard var comps = URLComponents(string: settings.baseURL + path) else {
+            throw APIError(statusCode: 0, message: "Invalid URL")
+        }
         if !query.isEmpty {
             comps.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
-        return comps.url!
+        guard let u = comps.url else {
+            throw APIError(statusCode: 0, message: "Invalid URL")
+        }
+        return u
     }
 
     /// Form-encoded POST (what the backend's Form(...) params expect).
-    private func formRequest(_ path: String, _ fields: [String: String] = [:]) -> URLRequest {
-        var req = URLRequest(url: url(path))
+    private func formRequest(_ path: String, _ fields: [String: String] = [:]) throws -> URLRequest {
+        var req = URLRequest(url: try url(path))
         req.httpMethod = "POST"
         req.allHTTPHeaderFields = bearer.merging(
             ["Content-Type": "application/x-www-form-urlencoded; charset=utf-8"]
         ) { _, new in new }
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "*-._~")
         req.httpBody = fields
-            .map { "\($0.key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
+            .map {
+                let k = $0.key.addingPercentEncoding(withAllowedCharacters: allowed) ?? $0.key
+                let v = $0.value.addingPercentEncoding(withAllowedCharacters: allowed) ?? $0.value
+                return "\(k)=\(v)"
+            }
             .joined(separator: "&")
             .data(using: .utf8)
         return req
     }
 
-    private func getRequest(_ path: String, query: [String: String] = [:]) -> URLRequest {
-        var req = URLRequest(url: url(path, query))
+    private func getRequest(_ path: String, query: [String: String] = [:]) throws -> URLRequest {
+        var req = URLRequest(url: try url(path, query))
         req.httpMethod = "GET"
         req.allHTTPHeaderFields = bearer
         return req
@@ -251,31 +262,31 @@ final class DriveAPI {
     }
 
     func checkAuth() async throws -> Bool {
-        let r: StatusResp = try await send(StatusResp.self, getRequest("/api/status"))
+        let r: StatusResp = try await send(StatusResp.self, try getRequest("/api/status"))
         return r.authenticated
     }
 
     func login(token: String) async throws {
-        _ = try await sendDict(formRequest("/api/auth", ["token": token]))
+        _ = try await sendDict(try formRequest("/api/auth", ["token": token]))
     }
 
     func logout() async throws {
-        _ = try await sendDict(formRequest("/api/logout"))
+        _ = try await sendDict(try formRequest("/api/logout"))
     }
 
     func sync() async throws {
-        _ = try await sendDict(formRequest("/api/sync"))
+        _ = try await sendDict(try formRequest("/api/sync"))
     }
 
     // ---- folders / files ----
 
     func folders() async throws -> [TDFolder] {
         struct Resp: Decodable { let folders: [TDFolder] }
-        return try await send(Resp.self, getRequest("/api/folders")).folders
+        return try await send(Resp.self, try getRequest("/api/folders")).folders
     }
 
     func createFolder(_ name: String) async throws {
-        _ = try await sendDict(formRequest("/api/folders", ["name": name]))
+        _ = try await sendDict(try formRequest("/api/folders", ["name": name]))
     }
 
     /// Returns (items with peer stamped, nextOffset).
@@ -288,7 +299,7 @@ final class DriveAPI {
                 case nextOffset = "next_offset"
             }
         }
-        let r: Resp = try await send(Resp.self, getRequest("/api/files", query: [
+        let r: Resp = try await send(Resp.self, try getRequest("/api/files", query: [
             "peer_type": peerType,
             "peer_id": String(peerId),
             "offset_id": String(offsetId),
@@ -309,7 +320,8 @@ final class DriveAPI {
         struct Resp: Decodable { let items: [TDFile] }
         var q = ["peer_type": peerType, "peer_id": String(peerId)]
         if let group { q["group"] = group }
-        let r: Resp = try await send(Resp.self, getRequest("/api/view/\(name)", query: q))
+        let safeName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        let r: Resp = try await send(Resp.self, try getRequest("/api/view/\(safeName)", query: q))
         return r.items.map { item -> TDFile in
             var m = item
             m.peerType = peerType
@@ -320,18 +332,20 @@ final class DriveAPI {
 
     func groups() async throws -> [String] {
         struct Resp: Decodable { let groups: [String] }
-        return (try? await send(Resp.self, getRequest("/api/groups")).groups) ?? []
+        return (try? await send(Resp.self, try getRequest("/api/groups")).groups) ?? []
     }
 
     func createGroup(_ name: String) async throws {
-        _ = try await sendDict(formRequest("/api/groups", ["name": name]))
+        _ = try await sendDict(try formRequest("/api/groups", ["name": name]))
     }
 
     // ---- flags / groups / text / delete ----
 
     func toggleFlag(_ file: TDFile, flag: String, value: Bool) async throws {
-        _ = try await sendDict(formRequest(
-            "/api/file/\(file.peerType)/\(file.peerId)/\(file.id)/\(flag)",
+        let safePeer = file.peerType.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file.peerType
+        let safeFlag = flag.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? flag
+        _ = try await sendDict(try formRequest(
+            "/api/file/\(safePeer)/\(file.peerId)/\(file.id)/\(safeFlag)",
             ["value": value ? "true" : "false"]
         ))
     }
@@ -339,53 +353,60 @@ final class DriveAPI {
     func assignGroup(_ file: TDFile, group: String?) async throws {
         var fields = [String: String]()
         if let group, !group.isEmpty { fields["group"] = group }
-        _ = try await sendDict(formRequest(
-            "/api/file/\(file.peerType)/\(file.peerId)/\(file.id)/group", fields))
+        let safePeer = file.peerType.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file.peerType
+        _ = try await sendDict(try formRequest(
+            "/api/file/\(safePeer)/\(file.peerId)/\(file.id)/group", fields))
     }
 
     func deleteFile(_ file: TDFile) async throws {
-        _ = try await sendDict(formRequest("/api/delete/\(file.peerType)/\(file.peerId)/\(file.id)"))
+        let safePeer = file.peerType.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file.peerType
+        _ = try await sendDict(try formRequest("/api/delete/\(safePeer)/\(file.peerId)/\(file.id)"))
     }
 
     func readText(_ file: TDFile) async throws -> String {
-        let d = try await sendDict(getRequest("/api/text/\(file.peerType)/\(file.peerId)/\(file.id)"))
+        let safePeer = file.peerType.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file.peerType
+        let d = try await sendDict(try getRequest("/api/text/\(safePeer)/\(file.peerId)/\(file.id)"))
         return (d["content"] as? String) ?? ""
     }
 
     func writeText(_ file: TDFile, content: String) async throws {
-        _ = try await sendDict(formRequest(
-            "/api/text/\(file.peerType)/\(file.peerId)/\(file.id)", ["content": content]))
+        let safePeer = file.peerType.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file.peerType
+        _ = try await sendDict(try formRequest(
+            "/api/text/\(safePeer)/\(file.peerId)/\(file.id)", ["content": content]))
     }
 
     // ---- uploads ----
 
     func uploadJobs() async throws -> [TDUploadJob] {
         struct Resp: Decodable { let jobs: [TDUploadJob] }
-        return (try? await send(Resp.self, getRequest("/api/uploads")).jobs) ?? []
+        return (try? await send(Resp.self, try getRequest("/api/uploads")).jobs) ?? []
     }
 
     func pauseJob(_ id: String) async throws {
-        _ = try await sendDict(formRequest("/api/uploads/\(id)/pause"))
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        _ = try await sendDict(try formRequest("/api/uploads/\(safeId)/pause"))
     }
 
     func resumeJob(_ id: String) async throws {
-        _ = try await sendDict(formRequest("/api/uploads/\(id)/resume"))
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        _ = try await sendDict(try formRequest("/api/uploads/\(safeId)/resume"))
     }
 
     func cancelJob(_ id: String) async throws {
-        _ = try await sendDict(formRequest("/api/uploads/\(id)/cancel"))
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        _ = try await sendDict(try formRequest("/api/uploads/\(safeId)/cancel"))
     }
 
     func pauseAll() async throws {
-        _ = try await sendDict(formRequest("/api/uploads/pause"))
+        _ = try await sendDict(try formRequest("/api/uploads/pause"))
     }
 
     func resumeAll() async throws {
-        _ = try await sendDict(formRequest("/api/uploads/resume"))
+        _ = try await sendDict(try formRequest("/api/uploads/resume"))
     }
 
     func cancelAll() async throws {
-        _ = try await sendDict(formRequest("/api/uploads/cancel"))
+        _ = try await sendDict(try formRequest("/api/uploads/cancel"))
     }
 
     /// Multipart phone → Telegram upload.
@@ -394,21 +415,21 @@ final class DriveAPI {
         let boundary = "Boundary-\(UUID().uuidString)"
         var body = Data()
         func field(_ name: String, _ value: String) {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(value)\r\n".data(using: .utf8)!)
+            if let d = "--\(boundary)\r\n".data(using: .utf8) { body.append(d) }
+            if let d = "Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8) { body.append(d) }
+            if let d = "\(value)\r\n".data(using: .utf8) { body.append(d) }
         }
         field("peer_type", peerType)
         field("peer_id", String(peerId))
         field("name", filename)
         field("upload_id", UUID().uuidString)
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: \(mime)\r\n\r\n".data(using: .utf8)!)
+        if let d = "--\(boundary)\r\n".data(using: .utf8) { body.append(d) }
+        if let d = "Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8) { body.append(d) }
+        if let d = "Content-Type: \(mime)\r\n\r\n".data(using: .utf8) { body.append(d) }
         body.append(data)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        if let d = "\r\n--\(boundary)--\r\n".data(using: .utf8) { body.append(d) }
 
-        var req = URLRequest(url: url("/api/upload"))
+        var req = URLRequest(url: try url("/api/upload"))
         req.httpMethod = "POST"
         req.allHTTPHeaderFields = bearer.merging(
             ["Content-Type": "multipart/form-data; boundary=\(boundary)"]
@@ -427,11 +448,11 @@ final class DriveAPI {
     }
 
     func localList(path: String = "") async throws -> LocalListResp {
-        try await send(LocalListResp.self, getRequest("/api/local/list", query: ["path": path]))
+        try await send(LocalListResp.self, try getRequest("/api/local/list", query: ["path": path]))
     }
 
     func localUpload(path: String, peerType: String, peerId: Int) async throws {
-        _ = try await sendDict(formRequest("/api/local/upload", [
+        _ = try await sendDict(try formRequest("/api/local/upload", [
             "peer_type": peerType,
             "peer_id": String(peerId),
             "path": path,
@@ -442,32 +463,32 @@ final class DriveAPI {
     // ---- usage / settings / logs ----
 
     func usage() async throws -> TDUsage {
-        try await send(TDUsage.self, getRequest("/api/usage"))
+        try await send(TDUsage.self, try getRequest("/api/usage"))
     }
 
     func resetUsage() async throws {
-        _ = try await sendDict(formRequest("/api/usage/reset"))
+        _ = try await sendDict(try formRequest("/api/usage/reset"))
     }
 
     func maxConcurrent() async throws -> Int {
-        let d = try await sendDict(getRequest("/api/settings"))
+        let d = try await sendDict(try getRequest("/api/settings"))
         return (d["max_concurrent_uploads"] as? Int) ?? 2
     }
 
     func saveMaxConcurrent(_ n: Int) async throws {
-        _ = try await sendDict(formRequest("/api/settings", ["max_concurrent_uploads": String(n)]))
+        _ = try await sendDict(try formRequest("/api/settings", ["max_concurrent_uploads": String(n)]))
     }
 
     func logs() async throws -> [TDLogEntry] {
         struct Resp: Decodable { let entries: [TDLogEntry] }
-        return (try? await send(Resp.self, getRequest("/api/logs")).entries) ?? []
+        return (try? await send(Resp.self, try getRequest("/api/logs")).entries) ?? []
     }
 
     // ---- authed media ----
 
-    /// Raw bytes with auth (thumbs, downloads). AVPlayer/AsyncImage can't send headers.
+    /// Raw bytes with auth (thumbs). AVPlayer/AsyncImage can't send headers.
     func authedData(path: String) async throws -> Data {
-        var req = URLRequest(url: URL(string: settings.baseURL + path)!)
+        var req = URLRequest(url: try url(path))
         req.allHTTPHeaderFields = bearer
         let (data, resp) = try await session.data(for: req)
         guard (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) else {
@@ -477,14 +498,13 @@ final class DriveAPI {
     }
 
     func thumbData(_ file: TDFile) async throws -> Data {
-        try await authedData(path: "/api/thumb/\(file.peerType)/\(file.peerId)/\(file.id)")
+        let safePeer = file.peerType.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file.peerType
+        return try await authedData(path: "/api/thumb/\(safePeer)/\(file.peerId)/\(file.id)")
     }
 
     /// Recording-archiver progress (status.json written by the Pi script).
     func archiverStatus() async throws -> ArchiverStatus {
-        var comps = URLComponents(string: settings.baseURL + "/api/local/file")!
-        comps.queryItems = [URLQueryItem(name: "path", value: "recording-archiver/status.json")]
-        var req = URLRequest(url: comps.url!)
+        var req = URLRequest(url: try url("/api/local/file", ["path": "recording-archiver/status.json"]))
         req.allHTTPHeaderFields = bearer
         req.timeoutInterval = 15
         let (data, resp) = try await session.data(for: req)
@@ -497,7 +517,7 @@ final class DriveAPI {
 
     /// Ask the Pi to run the archiver now (systemd path unit picks it up).
     func archiverRun() async throws -> String {
-        var req = URLRequest(url: URL(string: settings.baseURL + "/api/archiver/run")!)
+        var req = URLRequest(url: try url("/api/archiver/run"))
         req.httpMethod = "POST"
         req.allHTTPHeaderFields = bearer
         req.timeoutInterval = 15
@@ -511,9 +531,17 @@ final class DriveAPI {
     }
 
     func downloadToTemp(_ file: TDFile) async throws -> URL {
-        let data = try await authedData(path: "/api/download/\(file.peerType)/\(file.peerId)/\(file.id)")
+        let safePeer = file.peerType.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file.peerType
+        let req = try getRequest("/api/download/\(safePeer)/\(file.peerId)/\(file.id)")
+        let (tempURL, resp) = try await session.download(for: req)
+        guard (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) else {
+            throw APIError(statusCode: (resp as? HTTPURLResponse)?.statusCode ?? 0, message: "Download failed")
+        }
         let dest = FileManager.default.temporaryDirectory.appendingPathComponent(file.name)
-        try data.write(to: dest, options: .atomic)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try? FileManager.default.removeItem(at: dest)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: dest)
         return dest
     }
 }

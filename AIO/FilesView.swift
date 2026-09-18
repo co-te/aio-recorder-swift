@@ -16,7 +16,6 @@ struct FilesView: View {
     @State private var loadingFiles = false
     @State private var errorText: String?
     @State private var showCreate = false
-    @State private var pollTimer: Timer?
     @State private var detail: TDFile?
 
     var body: some View {
@@ -31,14 +30,12 @@ struct FilesView: View {
             .refreshable { await reload() }
             .task {
                 await reload()
-                pollTimer?.invalidate()
-                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-                    Task { await reload() }
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    if !Task.isCancelled {
+                        await pollFoldersQuiet()
+                    }
                 }
-            }
-            .onDisappear {
-                pollTimer?.invalidate()
-                pollTimer = nil
             }
             .sheet(isPresented: $showCreate, onDismiss: { Task { await loadFolders() } }) {
                 CreateFolderSheet(api: api)
@@ -154,6 +151,13 @@ struct FilesView: View {
             errorText = nil
         } catch {
             errorText = error.messageText
+        }
+    }
+
+    private func pollFoldersQuiet() async {
+        if let f = try? await api.folders() {
+            folders = f
+            if selected == nil { selected = f.first }
         }
     }
 

@@ -20,10 +20,7 @@ enum Theme {
     static let textPrimary = Color.white.opacity(0.94)
     static let textSecondary = Color.white.opacity(0.58)
 
-    static var isGlass: Bool {
-        if #available(iOS 26.0, *) { return true }
-        return false
-    }
+    static var isGlass: Bool { false }
 
     static func apply() {
         let nav = UINavigationBarAppearance()
@@ -60,21 +57,14 @@ struct GlassCard<Content: View>: View {
     }
 
     var body: some View {
-        Group {
-            if #available(iOS 26.0, *) {
-                content
-                    .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
-            } else {
-                content
-                    .background(Theme.cardFallback)
-                    .background(.ultraThinMaterial)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
-        )
+        content
+            .background(Theme.cardFallback)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+            )
     }
 }
 
@@ -96,21 +86,9 @@ struct GlassButton: View {
         }
         .foregroundStyle(prominent ? .white : tint)
         .background(
-            Group {
-                if #available(iOS 26.0, *) {
-                    GlassEffectContainer {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(prominent ? AnyShapeStyle(tint) : AnyShapeStyle(.clear))
-                            .glassEffect(
-                                prominent ? .regular.tint(tint.opacity(0.35)) : .regular,
-                                in: .rect(cornerRadius: 14, style: .continuous)
-                            )
-                    }
-                } else {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(prominent ? AnyShapeStyle(tint) : AnyShapeStyle(Color.white.opacity(0.08)))
-                }
-            }
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(prominent ? AnyShapeStyle(tint) : AnyShapeStyle(Color.white.opacity(0.08)))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         )
     }
 }

@@ -35,7 +35,7 @@ struct TangoSettings: Equatable {
     var host: String
     var port: Int
 
-    static let defaults = TangoSettings(host: "192.168.110.58", port: 8091)
+    static let defaults = TangoSettings(host: "", port: 8091)
     var baseURL: String { "http://\(host):\(port)" }
 
     static let hostKey = "tango_host"
@@ -69,18 +69,23 @@ final class TangoAPI {
         session = URLSession(configuration: cfg)
     }
 
-    private func url(_ path: String, _ query: [String: String] = [:]) -> URL {
-        var comps = URLComponents(string: settings.baseURL + path)!
+    private func url(_ path: String, _ query: [String: String] = [:]) throws -> URL {
+        guard var comps = URLComponents(string: settings.baseURL + path) else {
+            throw APIError(statusCode: 0, message: "Invalid URL")
+        }
         if !query.isEmpty {
             comps.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
-        return comps.url!
+        guard let u = comps.url else {
+            throw APIError(statusCode: 0, message: "Invalid URL")
+        }
+        return u
     }
 
     private func req(_ method: String, _ path: String,
                      query: [String: String] = [:],
-                     json: [String: Any]? = nil) -> URLRequest {
-        var r = URLRequest(url: url(path, query))
+                     json: [String: Any]? = nil) throws -> URLRequest {
+        var r = URLRequest(url: try url(path, query))
         r.httpMethod = method
         if let json {
             r.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -121,25 +126,25 @@ final class TangoAPI {
     // ---- watchlist ----
 
     func streamers() async throws -> [TangoStreamer] {
-        try await send([TangoStreamer].self, req("GET", "/api/streamers"))
+        try await send([TangoStreamer].self, try req("GET", "/api/streamers"))
     }
 
     func addStreamer(_ handle: String) async throws {
-        try await sendOK(req("POST", "/api/streamers", json: ["handle": handle]))
+        try await sendOK(try req("POST", "/api/streamers", json: ["handle": handle]))
     }
 
     func removeStreamer(_ handle: String) async throws {
-        try await sendOK(req("DELETE", "/api/streamers", json: ["handle": handle]))
+        try await sendOK(try req("DELETE", "/api/streamers", json: ["handle": handle]))
     }
 
     // ---- record control ----
 
     func record(_ handle: String, seconds: Int = 0) async throws {
-        try await sendOK(req("POST", "/api/record", json: ["handle": handle, "seconds": seconds]))
+        try await sendOK(try req("POST", "/api/record", json: ["handle": handle, "seconds": seconds]))
     }
 
     func stop(_ handle: String) async throws {
-        try await sendOK(req("POST", "/api/stop", json: ["handle": handle]))
+        try await sendOK(try req("POST", "/api/stop", json: ["handle": handle]))
     }
 
     /// Poll watchlist: starts recording any live streamer. Returns statuses.
@@ -148,42 +153,45 @@ final class TangoAPI {
             let started: [String]
             let statuses: [String: String]
         }
-        return try await send(Resp.self, req("POST", "/api/check", json: [:])).statuses
+        return try await send(Resp.self, try req("POST", "/api/check", json: [:])).statuses
     }
 
     func status() async throws -> [String: String] {
         struct Full: Decodable {
             let status: String?
         }
-        let d = try await send([String: Full].self, req("GET", "/api/status"))
-        return Dictionary(uniqueKeysWithValues: d.map { ($0.key, $0.value.status ?? "idle") })
+        let d = try await send([String: Full].self, try req("GET", "/api/status"))
+        return Dictionary(d.map { ($0.key, $0.value.status ?? "idle") }, uniquingKeysWith: { _, last in last })
     }
 
     func log(handle: String) async throws -> [String] {
         // /api/log returns a bare JSON array of lines.
-        (try? await send([String].self, req("GET", "/api/log", query: ["handle": handle]))) ?? []
+        (try? await send([String].self, try req("GET", "/api/log", query: ["handle": handle]))) ?? []
     }
 
     // ---- recordings ----
 
     func recordings() async throws -> [TangoRecording] {
-        (try? await send([TangoRecording].self, req("GET", "/api/recordings"))) ?? []
+        (try? await send([TangoRecording].self, try req("GET", "/api/recordings"))) ?? []
     }
 
     func downloadToTemp(_ rec: TangoRecording) async throws -> URL {
-        var r = URLRequest(url: url("/api/dl", ["name": rec.name]))
+        var r = URLRequest(url: try url("/api/dl", ["name": rec.name]))
         r.timeoutInterval = 300
-        let (data, resp) = try await session.data(for: r)
+        let (tempURL, resp) = try await session.download(for: r)
         guard (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) else {
             throw APIError(statusCode: (resp as? HTTPURLResponse)?.statusCode ?? 0, message: "Download failed")
         }
         let dest = FileManager.default.temporaryDirectory.appendingPathComponent(rec.name)
-        try data.write(to: dest, options: .atomic)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try? FileManager.default.removeItem(at: dest)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: dest)
         return dest
     }
 
     func thumbData(_ rec: TangoRecording) async throws -> Data {
-        let (data, resp) = try await session.data(for: req("GET", "/api/thumb", query: ["name": rec.name]))
+        let (data, resp) = try await session.data(for: try req("GET", "/api/thumb", query: ["name": rec.name]))
         guard (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) else {
             throw APIError(statusCode: 0, message: "No thumbnail")
         }

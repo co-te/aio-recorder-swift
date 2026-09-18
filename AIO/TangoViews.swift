@@ -39,7 +39,6 @@ private struct TangoWatchlistView: View {
     @State private var showAdd = false
     @State private var logHandle: String?
     @State private var checking = false
-    @State private var pollTimer: Timer?
 
     var body: some View {
         content
@@ -60,15 +59,10 @@ private struct TangoWatchlistView: View {
             }
             .refreshable { await load() }
             .task {
-                await load()
-                pollTimer?.invalidate()
-                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-                    Task { await load() }
+                while !Task.isCancelled {
+                    await load()
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
                 }
-            }
-            .onDisappear {
-                pollTimer?.invalidate()
-                pollTimer = nil
             }
             .sheet(isPresented: $showAdd, onDismiss: { Task { await load() } }) {
                 TangoAddSheet(api: api)
@@ -307,21 +301,15 @@ private struct TangoRecordingsView: View {
     @State private var errorText: String?
     @State private var shareTarget: TangoShareTarget?
     @State private var busyName: String?
-    @State private var pollTimer: Timer?
 
     var body: some View {
         content
             .refreshable { await load() }
             .task {
-                await load()
-                pollTimer?.invalidate()
-                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-                    Task { await load() }
+                while !Task.isCancelled {
+                    await load()
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
                 }
-            }
-            .onDisappear {
-                pollTimer?.invalidate()
-                pollTimer = nil
             }
             .sheet(item: $shareTarget) { target in
                 ShareSheet(url: target.url)

@@ -10,7 +10,6 @@ struct DashboardView: View {
     @State private var streamers: [StreamerState] = []
     @State private var running: Bool?
     @State private var errorText: String?
-    @State private var wsStarted = false
 
     private var totalPoints: Int { streamers.reduce(0) { $0 + $1.points } }
     private var online: [StreamerState] { streamers.filter { $0.isOnline } }
@@ -22,9 +21,11 @@ struct DashboardView: View {
             .refreshable { await load() }
             .task {
                 await load()
-                if !wsStarted {
-                    wsStarted = true
-                    listenWS()
+                for await list in api.stateStream() {
+                    if !list.isEmpty {
+                        streamers = list
+                        errorText = nil
+                    }
                 }
             }
     }
@@ -145,25 +146,16 @@ struct DashboardView: View {
             async let m = api.minerStatus()
             let (full, run) = try await (s, m)
             running = run
-            // map full -> state so both paths share one render
+            let existingPFPs = Dictionary(streamers.map { ($0.username, $0.pfp) }, uniquingKeysWith: { _, last in last })
+            // map full -> state so both paths share one render, preserving pfp
             streamers = full.map {
                 StreamerState(username: $0.username, points: $0.points,
-                              isOnline: $0.isOnline, stream: $0.stream, pfp: "")
+                              isOnline: $0.isOnline, stream: $0.stream,
+                              pfp: existingPFPs[$0.username] ?? "")
             }
             errorText = nil
         } catch {
             errorText = error.messageText
-        }
-    }
-
-    private func listenWS() {
-        Task {
-            for await list in api.stateStream() {
-                if !list.isEmpty {
-                    streamers = list
-                    errorText = nil
-                }
-            }
         }
     }
 }

@@ -100,7 +100,7 @@ struct MinerSettings: Equatable {
     var token: String
     var refreshSeconds: Int
 
-    static let defaults = MinerSettings(host: "192.168.110.58", port: 8000, token: "", refreshSeconds: 10)
+    static let defaults = MinerSettings(host: "", port: 8000, token: "", refreshSeconds: 10)
 
     var baseURL: String { "http://\(host):\(port)" }
 
@@ -148,16 +148,21 @@ final class MinerAPI {
         return h
     }
 
-    private func url(_ path: String, _ query: [String: String] = [:]) -> URL {
-        var comps = URLComponents(string: settings.baseURL + path)!
+    private func url(_ path: String, _ query: [String: String] = [:]) throws -> URL {
+        guard var comps = URLComponents(string: settings.baseURL + path) else {
+            throw APIError(statusCode: 0, message: "Invalid URL")
+        }
         if !query.isEmpty {
             comps.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
-        return comps.url!
+        guard let u = comps.url else {
+            throw APIError(statusCode: 0, message: "Invalid URL")
+        }
+        return u
     }
 
-    private func request(_ method: String, _ path: String, query: [String: String] = [:], body: [String: Any]? = nil) -> URLRequest {
-        var req = URLRequest(url: url(path, query))
+    private func request(_ method: String, _ path: String, query: [String: String] = [:], body: [String: Any]? = nil) throws -> URLRequest {
+        var req = URLRequest(url: try url(path, query))
         req.httpMethod = method
         req.allHTTPHeaderFields = headers
         if let body { req.httpBody = try? JSONSerialization.data(withJSONObject: body) }
@@ -186,56 +191,61 @@ final class MinerAPI {
     // ---- endpoints ----
 
     func minerStatus() async throws -> Bool {
-        let r: MinerStatus = try await send(MinerStatus.self, request("GET", "/api/miner-status"))
+        let r: MinerStatus = try await send(MinerStatus.self, try request("GET", "/api/miner-status"))
         return r.running
     }
 
     /// Enriched streamer list (points come from parsed logs; may lag WS state).
     func streamers() async throws -> [StreamerFull] {
-        try await send([StreamerFull].self, request("GET", "/api/streamers"))
+        try await send([StreamerFull].self, try request("GET", "/api/streamers"))
     }
 
     func addStreamer(_ username: String) async throws {
         _ = try await send([String: Bool].self,
-            request("POST", "/api/streamers", body: ["username": username]))
+            try request("POST", "/api/streamers", body: ["username": username]))
     }
 
     func removeStreamer(_ username: String) async throws {
+        let safeUser = username.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? username
         _ = try await send([String: Bool].self,
-            request("DELETE", "/api/streamers/\(username)"))
+            try request("DELETE", "/api/streamers/\(safeUser)"))
     }
 
     func updateStreamerSettings(_ username: String, _ settings: BetSettings) async throws {
         let enc = JSONEncoder()
         let payload = try JSONSerialization.jsonObject(with: enc.encode(["settings": settings]))
+        let safeUser = username.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? username
         _ = try await send([String: Bool].self,
-            request("PATCH", "/api/streamers/\(username)", body: payload as? [String: Any]))
+            try request("PATCH", "/api/streamers/\(safeUser)", body: payload as? [String: Any]))
     }
 
     func refreshPoints() async throws {
-        _ = try await send([String: Bool].self, request("POST", "/api/refresh-points"))
+        _ = try await send([String: Bool].self, try request("POST", "/api/refresh-points"))
     }
 
     func applyRestart() async throws {
-        _ = try await send([String: Bool].self, request("POST", "/api/apply-restart"))
+        _ = try await send([String: Bool].self, try request("POST", "/api/apply-restart"))
     }
 
     func recentLogs(lines: Int = 60, streamer: String? = nil) async throws -> [String] {
         var q = ["lines": String(lines)]
         if let s = streamer { q["streamer"] = s }
         struct LogResp: Decodable { let lines: [String] }
-        let r: LogResp = try await send(LogResp.self, request("GET", "/api/logs/recent", query: q))
+        let r: LogResp = try await send(LogResp.self, try request("GET", "/api/logs/recent", query: q))
         return r.lines
     }
 
     func globalSettings() async throws -> [String: Any] {
-        let (data, _) = try await session.data(for: request("GET", "/api/settings"))
+        let (data, resp) = try await session.data(for: try request("GET", "/api/settings"))
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError(statusCode: (resp as? HTTPURLResponse)?.statusCode ?? 0, message: "Failed to load settings")
+        }
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
     func saveGlobalSettings(_ obj: [String: Any]) async throws {
         _ = try await send([String: Bool].self,
-            request("PUT", "/api/settings", body: obj))
+            try request("PUT", "/api/settings", body: obj))
     }
 }
 
@@ -248,11 +258,15 @@ extension MinerAPI {
         AsyncStream { continuation in
             let task = Task {
                 while !Task.isCancelled {
-                    let hostPart = String(settings.baseURL.dropFirst("http://".count).split(separator: ":").first ?? "x")
-                    let portPart = Int(settings.baseURL.split(separator: ":").last ?? "80") ?? 80
-                    guard let wsURL = URL(string: "ws://\(hostPart):\(portPart)/ws") else { continue }
+                    guard !settings.host.isEmpty,
+                          let wsURL = URL(string: "ws://\(settings.host):\(settings.port)/ws") else {
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        continue
+                    }
+                    var activeWS: URLSessionWebSocketTask?
                     do {
                         let ws = URLSession.shared.webSocketTask(with: wsURL)
+                        activeWS = ws
                         ws.resume()
                         // drain initial state + updates
                         while let msg = try? await ws.receive() {
@@ -266,6 +280,7 @@ extension MinerAPI {
                             continuation.yield(list)
                         }
                     } catch { /* reconnect below */ }
+                    activeWS?.cancel(with: .goingAway, reason: nil)
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                 }
             }

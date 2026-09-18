@@ -34,7 +34,6 @@ struct ArchiverView: View {
 
     @State private var status: ArchiverStatus?
     @State private var errorText: String?
-    @State private var pollTimer: Timer?
     @State private var runNote: String?
     @State private var runBusy = false
 
@@ -45,21 +44,13 @@ struct ArchiverView: View {
             .refreshable { await load() }
             .task {
                 await load()
-                startPoll()
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    if !Task.isCancelled {
+                        await loadQuiet()
+                    }
+                }
             }
-            .onDisappear { stopPoll() }
-    }
-
-    private func startPoll() {
-        stopPoll()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-            Task { await loadQuiet() }
-        }
-    }
-
-    private func stopPoll() {
-        pollTimer?.invalidate()
-        pollTimer = nil
     }
 
     @ViewBuilder

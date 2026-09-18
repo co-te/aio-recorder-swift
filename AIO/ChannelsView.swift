@@ -88,13 +88,13 @@ private struct ChannelCard: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
-                    AsyncImage(url: URL(string: "https://static-cdn.jtvnw.net/jtv_user_pictures/\(streamer.username.lowercased())-profile_image-70x70.png")) { img in
-                        img.resizable().scaledToFill()
-                    } placeholder: {
+                    ZStack {
                         Circle().fill(Theme.twitch.opacity(0.25))
+                        Text(String(streamer.username.prefix(1)).uppercased())
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundStyle(Theme.twitch)
                     }
                     .frame(width: 38, height: 38)
-                    .clipShape(Circle())
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(streamer.username)

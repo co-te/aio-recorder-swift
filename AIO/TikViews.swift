@@ -42,7 +42,6 @@ private struct TikSourcesView: View {
     @State private var showAdd = false
     @State private var logSource: TikSource?
     @State private var editing: TikSource?
-    @State private var pollTimer: Timer?
 
     var body: some View {
         content
@@ -53,15 +52,10 @@ private struct TikSourcesView: View {
             }
             .refreshable { await load() }
             .task {
-                await load()
-                pollTimer?.invalidate()
-                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-                    Task { await load() }
+                while !Task.isCancelled {
+                    await load()
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
                 }
-            }
-            .onDisappear {
-                pollTimer?.invalidate()
-                pollTimer = nil
             }
             .sheet(isPresented: $showAdd, onDismiss: { Task { await load() } }) {
                 TikAddSourceSheet(api: api)
@@ -402,21 +396,15 @@ private struct TikActiveView: View {
 
     @State private var items: [TikRecording] = []
     @State private var errorText: String?
-    @State private var pollTimer: Timer?
 
     var body: some View {
         content
             .refreshable { await load() }
             .task {
-                await load()
-                pollTimer?.invalidate()
-                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-                    Task { await load() }
+                while !Task.isCancelled {
+                    await load()
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
                 }
-            }
-            .onDisappear {
-                pollTimer?.invalidate()
-                pollTimer = nil
             }
     }
 
@@ -475,21 +463,15 @@ private struct TikHistoryView: View {
 
     @State private var items: [TikRecording] = []
     @State private var errorText: String?
-    @State private var pollTimer: Timer?
 
     var body: some View {
         content
             .refreshable { await load() }
             .task {
-                await load()
-                pollTimer?.invalidate()
-                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-                    Task { await load() }
+                while !Task.isCancelled {
+                    await load()
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
                 }
-            }
-            .onDisappear {
-                pollTimer?.invalidate()
-                pollTimer = nil
             }
     }
 

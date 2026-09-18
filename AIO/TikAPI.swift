@@ -80,7 +80,7 @@ struct TikSettings: Equatable {
     var host: String
     var port: Int
 
-    static let defaults = TikSettings(host: "192.168.110.58", port: 8090)
+    static let defaults = TikSettings(host: "", port: 8090)
     var baseURL: String { "http://\(host):\(port)" }
 
     static let hostKey = "tik_host"
@@ -114,18 +114,23 @@ final class TikAPI {
         session = URLSession(configuration: cfg)
     }
 
-    private func url(_ path: String, _ query: [String: String] = [:]) -> URL {
-        var comps = URLComponents(string: settings.baseURL + path)!
+    private func url(_ path: String, _ query: [String: String] = [:]) throws -> URL {
+        guard var comps = URLComponents(string: settings.baseURL + path) else {
+            throw APIError(statusCode: 0, message: "Invalid URL")
+        }
         if !query.isEmpty {
             comps.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
-        return comps.url!
+        guard let u = comps.url else {
+            throw APIError(statusCode: 0, message: "Invalid URL")
+        }
+        return u
     }
 
     private func req(_ method: String, _ path: String,
                      query: [String: String] = [:],
-                     json: [String: Any]? = nil) -> URLRequest {
-        var r = URLRequest(url: url(path, query))
+                     json: [String: Any]? = nil) throws -> URLRequest {
+        var r = URLRequest(url: try url(path, query))
         r.httpMethod = method
         if let json {
             r.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -162,7 +167,7 @@ final class TikAPI {
 
     func sources() async throws -> [TikSource] {
         struct Resp: Decodable { let sources: [TikSource] }
-        return try await send(Resp.self, req("GET", "/api/sources")).sources
+        return try await send(Resp.self, try req("GET", "/api/sources")).sources
     }
 
     func addSource(platform: String, user: String, interval: Int = 5, quality: String = "best",
@@ -174,7 +179,7 @@ final class TikAPI {
         if let url, !url.isEmpty { payload["url"] = url }
         if let duration { payload["duration"] = duration }
         if let outputDir, !outputDir.isEmpty { payload["output_dir"] = outputDir }
-        _ = try await sendDict(req("POST", "/api/sources", json: payload))
+        _ = try await sendDict(try req("POST", "/api/sources", json: payload))
     }
 
     func updateSource(_ id: String, enabled: Bool? = nil, interval: Int? = nil,
@@ -186,23 +191,28 @@ final class TikAPI {
         if let quality { payload["quality"] = quality }
         if let duration { payload["duration"] = duration }
         if let outputDir { payload["output_dir"] = outputDir }
-        _ = try await sendDict(req("PUT", "/api/sources/\(id)", json: payload))
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        _ = try await sendDict(try req("PUT", "/api/sources/\(safeId)", json: payload))
     }
 
     func deleteSource(_ id: String) async throws {
-        _ = try await sendDict(req("DELETE", "/api/sources/\(id)"))
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        _ = try await sendDict(try req("DELETE", "/api/sources/\(safeId)"))
     }
 
     func checkNow(_ id: String) async throws {
-        _ = try await sendDict(req("POST", "/api/sources/\(id)/check"))
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        _ = try await sendDict(try req("POST", "/api/sources/\(safeId)/check"))
     }
 
     func startNow(_ id: String) async throws {
-        _ = try await sendDict(req("POST", "/api/sources/\(id)/start-now"))
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        _ = try await sendDict(try req("POST", "/api/sources/\(safeId)/start-now"))
     }
 
     func monitorLog(_ id: String) async throws -> [String] {
-        let d = try await sendDict(req("GET", "/api/sources/\(id)/log", query: ["lines": "120"]))
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        let d = try await sendDict(try req("GET", "/api/sources/\(safeId)/log", query: ["lines": "120"]))
         if let lines = d["lines"] as? [String] { return lines }
         if let log = d["log"] as? [String] { return log }
         if let text = d["log"] as? String { return text.components(separatedBy: "\n") }
@@ -213,24 +223,28 @@ final class TikAPI {
 
     func active() async throws -> [TikRecording] {
         struct Resp: Decodable { let recordings: [TikRecording] }
-        return (try? await send(Resp.self, req("GET", "/api/recordings/active")).recordings) ?? []
+        return (try? await send(Resp.self, try req("GET", "/api/recordings/active")).recordings) ?? []
     }
 
     func history() async throws -> [TikRecording] {
         struct Resp: Decodable { let history: [TikRecording] }
-        return (try? await send(Resp.self, req("GET", "/api/recordings/history")).history) ?? []
+        return (try? await send(Resp.self, try req("GET", "/api/recordings/history")).history) ?? []
     }
 
     func stopRecording(_ id: String) async throws {
-        _ = try await sendDict(req("POST", "/api/recordings/\(id)/stop"))
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        _ = try await sendDict(try req("POST", "/api/recordings/\(safeId)/stop"))
     }
 
     func deleteRecording(_ id: String) async throws {
-        _ = try await sendDict(req("DELETE", "/api/recordings/\(id)"))
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        _ = try await sendDict(try req("DELETE", "/api/recordings/\(safeId)"))
     }
 
     func channelLog(platform: String, user: String) async throws -> [String] {
-        let d = try await sendDict(req("GET", "/api/logs/\(platform)/\(user)", query: ["lines": "120"]))
+        let safePlat = platform.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? platform
+        let safeUser = user.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? user
+        let d = try await sendDict(try req("GET", "/api/logs/\(safePlat)/\(safeUser)", query: ["lines": "120"]))
         return (d["lines"] as? [String]) ?? []
     }
 
@@ -238,7 +252,7 @@ final class TikAPI {
 
     func getSettings() async throws -> TikSettingsData {
         struct Resp: Decodable { let settings: TikSettingsData }
-        return try await send(Resp.self, req("GET", "/api/settings")).settings
+        return try await send(Resp.self, try req("GET", "/api/settings")).settings
     }
 
     func saveSettings(_ s: TikSettingsData) async throws {
@@ -250,7 +264,7 @@ final class TikAPI {
             "auto_convert": s.autoConvert,
         ]
         if let d = s.defaultDuration { payload["default_duration"] = d }
-        _ = try await sendDict(req("PUT", "/api/settings", json: payload))
+        _ = try await sendDict(try req("PUT", "/api/settings", json: payload))
     }
 
     // ---- integrations (cookies + telegram) ----
@@ -282,12 +296,7 @@ final class TikAPI {
     }
 
     func getIntegrations() async throws -> (cookies: TikCookies, telegram: TikTelegram) {
-        struct Resp: Decodable {
-            let cookies: TikCookies
-            let telegram: TikTelegram
-        }
-        // Tolerate missing keys with safe defaults.
-        let d = try await sendDict(req("GET", "/api/settings"))
+        let d = try await sendDict(try req("GET", "/api/settings"))
         let dec = JSONDecoder()
         let cData = (try? JSONSerialization.data(withJSONObject: d["cookies"] ?? [:])) ?? Data()
         let tData = (try? JSONSerialization.data(withJSONObject: d["telegram"] ?? [:])) ?? Data()
@@ -297,14 +306,14 @@ final class TikAPI {
     }
 
     func saveCookies(sessionid: String, ttTargetIdc: String) async throws {
-        _ = try await sendDict(req("PUT", "/api/settings/cookies", json: [
+        _ = try await sendDict(try req("PUT", "/api/settings/cookies", json: [
             "sessionid_ss": sessionid,
             "tt-target-idc": ttTargetIdc,
         ]))
     }
 
     func saveTelegram(apiId: String, apiHash: String, chatId: String) async throws {
-        _ = try await sendDict(req("PUT", "/api/settings/telegram", json: [
+        _ = try await sendDict(try req("PUT", "/api/settings/telegram", json: [
             "api_id": apiId, "api_hash": apiHash, "chat_id": chatId,
         ]))
     }
@@ -313,15 +322,16 @@ final class TikAPI {
 
     /// Returns the admin key, or nil when the server has none configured.
     func adminKey() async throws -> String? {
-        let (data, resp) = try await session.data(for: req("GET", "/admin/admin-key"))
+        guard let r = try? req("GET", "/admin/admin-key") else { return nil }
+        let (data, resp) = try await session.data(for: r)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else { return nil }
         let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         return obj?["admin_key"] as? String
     }
 
-    private func adminReq(_ method: String, _ path: String, key: String?) -> URLRequest {
-        var r = req(method, path)
+    private func adminReq(_ method: String, _ path: String, key: String?) throws -> URLRequest {
+        var r = try req(method, path)
         if let key { r.setValue(key, forHTTPHeaderField: "X-Admin-Key") }
         return r
     }
@@ -332,7 +342,7 @@ final class TikAPI {
             let latest: String
         }
         do {
-            let v: Resp = try await send(Resp.self, adminReq("GET", "/admin/version", key: key))
+            let v: Resp = try await send(Resp.self, try adminReq("GET", "/admin/version", key: key))
             return (v.current, v.latest)
         } catch {
             return ("?", "?")
@@ -340,7 +350,7 @@ final class TikAPI {
     }
 
     func restartServer(key: String?) async throws {
-        _ = try await sendDict(adminReq("POST", "/admin/restart", key: key))
+        _ = try await sendDict(try adminReq("POST", "/admin/restart", key: key))
     }
 
     // ---- proxy pool ----
@@ -361,7 +371,7 @@ final class TikAPI {
     }
 
     func proxyStatus() async throws -> ProxyStatus {
-        try await send(ProxyStatus.self, req("GET", "/api/proxy/status"))
+        try await send(ProxyStatus.self, try req("GET", "/api/proxy/status"))
     }
 
     func rotateProxy() async throws -> String {
@@ -369,7 +379,7 @@ final class TikAPI {
             let rotated: Int?
             let assignments: [String: String]?
         }
-        let r = (try? await send(Resp.self, req("POST", "/api/proxy/rotate")))
+        let r = (try? await send(Resp.self, try req("POST", "/api/proxy/rotate")))
         let n = r?.assignments?.count ?? 0
         return "Rotated \(n) streamer\(n == 1 ? "" : "s")"
     }

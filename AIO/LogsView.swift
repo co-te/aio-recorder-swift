@@ -7,7 +7,7 @@ import SwiftUI
 /// One parsed log line. Miner lines look like
 /// "2026-09-11 10:00:01,234 [INFO] message…" — parser is tolerant.
 private struct MinerLogLine: Identifiable {
-    let id: Int
+    let id: String
     let time: String
     let level: String
     let message: String
@@ -21,16 +21,17 @@ private struct MinerLogLine: Identifiable {
         }
     }
 
-    static func parse(_ raw: String, id: Int) -> MinerLogLine {
+    static func parse(_ raw: String) -> MinerLogLine {
+        let lineId = UUID().uuidString
         // Split "…[LEVEL] message" tail first.
         if let open = raw.firstIndex(of: "["),
            let close = raw[open...].firstIndex(of: "]") {
             let lvl = String(raw[raw.index(after: open)..<close]).uppercased()
             let msg = String(raw[raw.index(after: close)...]).trimmingCharacters(in: .whitespaces)
             let t = String(raw[..<open]).trimmingCharacters(in: .whitespaces)
-            return MinerLogLine(id: id, time: shortTime(t), level: lvl, message: msg)
+            return MinerLogLine(id: lineId, time: shortTime(t), level: lvl, message: msg)
         }
-        return MinerLogLine(id: id, time: "", level: "", message: raw)
+        return MinerLogLine(id: lineId, time: "", level: "", message: raw)
     }
 
     /// "2026-09-11 10:00:01,234" → "10:00:01".
@@ -136,7 +137,7 @@ struct LogsView: View {
             let raw = try await Task.detached(priority: .userInitiated) {
                 try await api.recentLogs(lines: 150)
             }.value
-            let parsed = raw.enumerated().map { MinerLogLine.parse($0.element, id: $0.offset) }
+            let parsed = raw.map { MinerLogLine.parse($0) }
             await MainActor.run {
                 all = parsed
                 errorText = nil

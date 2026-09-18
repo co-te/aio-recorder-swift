@@ -15,7 +15,6 @@ struct UploadsView: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var uploading = false
     @State private var uploadNote: String?
-    @State private var pollTimer: Timer?
 
     var body: some View {
         content
@@ -36,18 +35,12 @@ struct UploadsView: View {
             }
             .refreshable { await load() }
             .task {
-                await load()
                 folders = (try? await api.folders()) ?? []
                 if target == nil { target = folders.first }
-                // Live progress: repoll while visible, no pull needed.
-                pollTimer?.invalidate()
-                pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-                    Task { await loadQuiet() }
+                while !Task.isCancelled {
+                    await loadQuiet()
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
                 }
-            }
-            .onDisappear {
-                pollTimer?.invalidate()
-                pollTimer = nil
             }
             .onChange(of: pickerItem) { item in
                 guard let item else { return }
@@ -154,11 +147,12 @@ struct UploadsView: View {
                 uploadNote = "Couldn't read that file."
                 return
             }
-            let name = item.itemIdentifier ?? "upload"
+            let rawName = item.itemIdentifier ?? "upload_\(Int(Date().timeIntervalSince1970))"
+            let safeName = rawName.split(separator: "/").last.map(String.init) ?? "upload"
             let ext = (item.supportedContentTypes.first?.preferredFilenameExtension).map { ".\($0)" } ?? ""
             try await api.uploadFile(
                 data: data,
-                filename: "\(name)\(ext)",
+                filename: "\(safeName)\(ext)",
                 mime: item.supportedContentTypes.first?.preferredMIMEType ?? "application/octet-stream",
                 peerType: dest.peerType, peerId: dest.peerId)
             uploadNote = "Queued — watch it above."

@@ -70,6 +70,7 @@ struct AIOShell: View {
     @State private var driveAPI: DriveAPI
     @State private var tab = 0
     @State private var toast: String?
+    @State private var toastTask: Task<Void, Never>?
 
     init(settings: Binding<AIOSettings>) {
         _settings = settings
@@ -123,10 +124,13 @@ struct AIOShell: View {
     }
 
     private func showToast(_ msg: String) {
+        toastTask?.cancel()
         withAnimation { toast = msg }
-        Task {
+        toastTask = Task {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            await MainActor.run { withAnimation { toast = nil } }
+            if !Task.isCancelled {
+                await MainActor.run { withAnimation { toast = nil } }
+            }
         }
     }
 }
@@ -352,20 +356,24 @@ struct AIOSettingsView: View {
     }
 
     private func current() -> AIOSettings {
-        AIOSettings(
+        let cleanTik = tikHost.trimmingCharacters(in: .whitespaces)
+        let cleanTango = tangoHost.trimmingCharacters(in: .whitespaces)
+        let cleanMiner = minerHost.trimmingCharacters(in: .whitespaces)
+        let cleanDrive = driveHost.trimmingCharacters(in: .whitespaces)
+        return AIOSettings(
             tik: TikSettings(
-                host: tikHost.trimmingCharacters(in: .whitespaces).isEmpty ? settings.tik.host : tikHost.trimmingCharacters(in: .whitespaces),
+                host: cleanTik,
                 port: Int(tikPort) ?? settings.tik.port),
             tango: TangoSettings(
-                host: tangoHost.trimmingCharacters(in: .whitespaces).isEmpty ? settings.tango.host : tangoHost.trimmingCharacters(in: .whitespaces),
+                host: cleanTango,
                 port: Int(tangoPort) ?? settings.tango.port),
             miner: MinerSettings(
-                host: minerHost.trimmingCharacters(in: .whitespaces).isEmpty ? settings.miner.host : minerHost.trimmingCharacters(in: .whitespaces),
+                host: cleanMiner,
                 port: Int(minerPort) ?? settings.miner.port,
                 token: minerToken,
                 refreshSeconds: settings.miner.refreshSeconds),
             drive: DriveSettings(
-                host: driveHost.trimmingCharacters(in: .whitespaces).isEmpty ? settings.drive.host : driveHost.trimmingCharacters(in: .whitespaces),
+                host: cleanDrive,
                 port: Int(drivePort) ?? settings.drive.port,
                 token: driveToken))
     }
@@ -406,7 +414,7 @@ struct AIOSettingsView: View {
 struct AIOConnectScreen: View {
     let onConnect: (AIOSettings) -> Void
 
-    @State private var host = "192.168.110.58"
+    @State private var host = ""
     @State private var minerToken = ""
     @State private var driveToken = ""
     @State private var busy = false
