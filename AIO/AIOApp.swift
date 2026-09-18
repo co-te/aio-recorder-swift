@@ -280,7 +280,7 @@ struct DriveRootView: View {
         .navigationTitle("Tele-Drive")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            if let uploads = try? await api.uploads() {
+            if let uploads = try? await api.uploadJobs() {
                 uploadCount = uploads.filter { $0.isActive }.count
             }
         }

@@ -20,7 +20,7 @@ struct CommandCenterView: View {
     @State private var tikSources: [TikSource] = []
     @State private var tangoStreamers: [TangoStreamer] = []
     @State private var minerStreamers: [StreamerState] = []
-    @State private var minerStatus: MinerStatus?
+    @State private var minerRunning: Bool?
     @State private var driveUsage: TDUsage?
     @State private var driveUploads: [TDUploadJob] = []
     @State private var archiverStatus: ArchiverStatus?
@@ -510,7 +510,7 @@ struct CommandCenterView: View {
         withAnimation { actionMessage = "Triggering Drive Archiver..." }
         do {
             let active = try await driveAPI.archiverRun()
-            withAnimation { actionMessage = active.running ? "Archiver started successfully" : "Archiver triggered" }
+            withAnimation { actionMessage = "Archiver triggered (\(active))" }
             await refreshQuiet()
         } catch {
             withAnimation { actionMessage = "Archiver trigger failed: \(error.messageText)" }
@@ -534,7 +534,7 @@ struct CommandCenterView: View {
 
     private func loadTelemetry() async {
         do {
-            let recs = try await tikAPI.recordings()
+            let recs = try await tikAPI.active()
             let srcs = try await tikAPI.sources()
             await MainActor.run {
                 self.tikRecordings = recs
@@ -556,11 +556,19 @@ struct CommandCenterView: View {
         }
 
         do {
-            let streamers = try await minerAPI.fetchStreamers()
-            let status = try await minerAPI.fetchStatus()
+            let full = try await minerAPI.streamers()
+            let running = try await minerAPI.minerStatus()
             await MainActor.run {
-                self.minerStreamers = streamers
-                self.minerStatus = status
+                self.minerStreamers = full.map {
+                    StreamerState(
+                        username: $0.username,
+                        points: $0.points,
+                        isOnline: $0.isOnline,
+                        stream: $0.stream,
+                        pfp: ""
+                    )
+                }
+                self.minerRunning = running
                 self.minerOnline = true
             }
         } catch {
@@ -569,7 +577,7 @@ struct CommandCenterView: View {
 
         do {
             let usage = try await driveAPI.usage()
-            let uploads = try await driveAPI.uploads()
+            let uploads = try await driveAPI.uploadJobs()
             let archiver = try? await driveAPI.archiverStatus()
             await MainActor.run {
                 self.driveUsage = usage
