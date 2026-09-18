@@ -12,6 +12,10 @@ enum Theme {
     static let warn = Color(red: 0xFF/255, green: 0xB0/255, blue: 0x20/255)
     static let twitch = Color(red: 0x91/255, green: 0x46/255, blue: 0xFF/255)
     static let gold = Color(red: 0xFF/255, green: 0xC1/255, blue: 0x07/255)
+    static let cyan = Color(red: 0x06/255, green: 0xB6/255, blue: 0xD4/255)
+    static let tangoOrange = Color(red: 0xF9/255, green: 0x73/255, blue: 0x16/255)
+    static let telegramSky = Color(red: 0x38/255, green: 0xBD/255, blue: 0xF8/255)
+    static let tiktokPink = Color(red: 0xFE/255, green: 0x2C/255, blue: 0x55/255)
 
     static let bgTop = Color(red: 0x14/255, green: 0x0C/255, blue: 0x26/255)   // purple-leaning
     static let bgBottom = Color(red: 0x0A/255, green: 0x07/255, blue: 0x14/255)
@@ -19,6 +23,9 @@ enum Theme {
     static let cardFallback = Color.white.opacity(0.06)
     static let textPrimary = Color.white.opacity(0.94)
     static let textSecondary = Color.white.opacity(0.58)
+
+    static let surfaceBg = Color.white.opacity(0.05)
+    static let surfaceBorder = Color.white.opacity(0.12)
 
     static var isGlass: Bool { false }
 
@@ -149,6 +156,218 @@ struct ErrorStateView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+}
+
+// MARK: - Modern UI Components
+
+struct BouncyButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+struct PulsingRadar: View {
+    let color: Color
+    var size: CGFloat = 8
+    @State private var pulse = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.55), lineWidth: 2)
+                .scaleEffect(pulse ? 2.4 : 1.0)
+                .opacity(pulse ? 0 : 0.8)
+            Circle()
+                .fill(color)
+                .frame(width: size, height: size)
+        }
+        .frame(width: size * 2.4, height: size * 2.4)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: false)) {
+                pulse = true
+            }
+        }
+    }
+}
+
+struct BentoCard<Content: View>: View {
+    var headerIcon: String? = nil
+    var headerTitle: String? = nil
+    var headerSubtitle: String? = nil
+    var headerBadge: String? = nil
+    var badgeColor: Color = Theme.blue
+    let content: Content
+
+    init(
+        headerIcon: String? = nil,
+        headerTitle: String? = nil,
+        headerSubtitle: String? = nil,
+        headerBadge: String? = nil,
+        badgeColor: Color = Theme.blue,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.headerIcon = headerIcon
+        self.headerTitle = headerTitle
+        self.headerSubtitle = headerSubtitle
+        self.headerBadge = headerBadge
+        self.badgeColor = badgeColor
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if headerTitle != nil || headerIcon != nil || headerBadge != nil {
+                HStack(spacing: 8) {
+                    if let headerIcon {
+                        Image(systemName: headerIcon)
+                            .font(.subheadline)
+                            .foregroundStyle(badgeColor)
+                    }
+                    if let headerTitle {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(headerTitle)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Theme.textPrimary)
+                            if let headerSubtitle {
+                                Text(headerSubtitle)
+                                    .font(.caption2)
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+                        }
+                    }
+                    Spacer()
+                    if let headerBadge {
+                        Text(headerBadge)
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(badgeColor.opacity(0.18), in: Capsule())
+                            .foregroundStyle(badgeColor)
+                    }
+                }
+            }
+            content
+        }
+        .padding(16)
+        .background(Theme.cardFallback)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+        )
+    }
+}
+
+struct MetricCard: View {
+    let icon: String
+    let title: String
+    let value: String
+    var subtitle: String? = nil
+    var tint: Color = Theme.blue
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        Button {
+            action?()
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.title3)
+                        .foregroundStyle(tint)
+                        .frame(width: 32, height: 32)
+                        .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    Spacer()
+                    if action != nil {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(Theme.textSecondary.opacity(0.6))
+                    }
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(value)
+                        .font(.system(.title2, design: .rounded))
+                        .fontWeight(.bold)
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    Text(title)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(tint)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.cardFallback)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(BouncyButtonStyle())
+        .disabled(action == nil)
+    }
+}
+
+struct CapsuleFilterChip: View {
+    let title: String
+    var icon: String? = nil
+    var badge: String? = nil
+    var badgeColor: Color = Theme.blue
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.caption)
+                }
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(isSelected ? .semibold : .medium)
+                if let badge {
+                    Text(badge)
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(badgeColor.opacity(isSelected ? 0.35 : 0.20), in: Capsule())
+                        .foregroundStyle(isSelected ? .white : badgeColor)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+            .background(
+                Capsule()
+                    .fill(isSelected ? Color.white.opacity(0.16) : Color.white.opacity(0.05))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(isSelected ? Color.white.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(BouncyButtonStyle())
     }
 }
 

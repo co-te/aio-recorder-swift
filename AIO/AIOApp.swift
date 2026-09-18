@@ -83,14 +83,28 @@ struct AIOShell: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            NavigationStack { TikRootView(api: tikAPI) }
-                .tabItem { Label("Tik", systemImage: "video.fill") }.tag(0)
-            NavigationStack { TangoRootView(api: tangoAPI) }
-                .tabItem { Label("Tango", systemImage: "phone.fill") }.tag(1)
+            NavigationStack {
+                CommandCenterView(
+                    tikAPI: tikAPI,
+                    tangoAPI: tangoAPI,
+                    minerAPI: minerAPI,
+                    driveAPI: driveAPI,
+                    onSelectTab: { newTab in tab = newTab }
+                )
+            }
+            .tabItem { Label("Overview", systemImage: "sparkles") }.tag(0)
+
+            NavigationStack {
+                RecordersRootView(tikAPI: tikAPI, tangoAPI: tangoAPI)
+            }
+            .tabItem { Label("Recorders", systemImage: "record.circle.fill") }.tag(1)
+
             NavigationStack { MinerRootView(api: minerAPI) }
                 .tabItem { Label("Miner", systemImage: "diamond.fill") }.tag(2)
+
             NavigationStack { DriveRootView(api: driveAPI) }
                 .tabItem { Label("Drive", systemImage: "externaldrive.fill") }.tag(3)
+
             NavigationStack {
                 AIOSettingsView(settings: $settings) { updated in
                     settings = updated
@@ -135,7 +149,52 @@ struct AIOShell: View {
     }
 }
 
-// MARK: - Sub-tabs for miner + drive (keeps the tab bar at 5 items)
+// MARK: - Unified Recorders View (Tik + Tango)
+
+struct RecordersRootView: View {
+    let tikAPI: TikAPI
+    let tangoAPI: TangoAPI
+    @State private var selected = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                CapsuleFilterChip(
+                    title: "TikTok / Twitch",
+                    icon: "video.fill",
+                    badgeColor: Theme.tiktokPink,
+                    isSelected: selected == 0
+                ) {
+                    withAnimation(.easeInOut(duration: 0.15)) { selected = 0 }
+                }
+
+                CapsuleFilterChip(
+                    title: "Tango.me",
+                    icon: "phone.fill",
+                    badgeColor: Theme.tangoOrange,
+                    isSelected: selected == 1
+                ) {
+                    withAnimation(.easeInOut(duration: 0.15)) { selected = 1 }
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            if selected == 0 {
+                TikRootView(api: tikAPI)
+            } else {
+                TangoRootView(api: tangoAPI)
+            }
+        }
+        .background(AppBackground())
+        .navigationTitle(selected == 0 ? "Tik Recorder" : "Tango Recorder")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Sub-tabs for miner + drive
 
 struct MinerRootView: View {
     let api: MinerAPI
@@ -143,12 +202,18 @@ struct MinerRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Section", selection: $section) {
-                Text("Miner").tag(0)
-                Text("Channels").tag(1)
-                Text("Logs").tag(2)
+            HStack(spacing: 8) {
+                CapsuleFilterChip(title: "Miner", icon: "diamond.fill", isSelected: section == 0) {
+                    withAnimation(.easeInOut(duration: 0.15)) { section = 0 }
+                }
+                CapsuleFilterChip(title: "Channels", icon: "tv.fill", isSelected: section == 1) {
+                    withAnimation(.easeInOut(duration: 0.15)) { section = 1 }
+                }
+                CapsuleFilterChip(title: "Logs", icon: "list.bullet.rectangle", isSelected: section == 2) {
+                    withAnimation(.easeInOut(duration: 0.15)) { section = 2 }
+                }
+                Spacer()
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
 
@@ -159,27 +224,48 @@ struct MinerRootView: View {
             }
         }
         .background(AppBackground())
-        .navigationTitle("Points miner")
+        .navigationTitle("Points Miner")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
 struct DriveRootView: View {
     let api: DriveAPI
     @State private var section = 0
+    @State private var uploadCount = 0
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Section", selection: $section) {
-                Text("Files").tag(0)
-                Text("Views").tag(1)
-                Text("Uploads").tag(2)
-                Text("Local").tag(3)
-                Text("Logs").tag(4)
-                Text("Archiver").tag(5)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    CapsuleFilterChip(title: "Files", icon: "folder.fill", isSelected: section == 0) {
+                        withAnimation(.easeInOut(duration: 0.15)) { section = 0 }
+                    }
+                    CapsuleFilterChip(title: "Views", icon: "eye.fill", isSelected: section == 1) {
+                        withAnimation(.easeInOut(duration: 0.15)) { section = 1 }
+                    }
+                    CapsuleFilterChip(
+                        title: "Uploads",
+                        icon: "arrow.up.circle.fill",
+                        badge: uploadCount > 0 ? "\(uploadCount)" : nil,
+                        badgeColor: Theme.telegramSky,
+                        isSelected: section == 2
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.15)) { section = 2 }
+                    }
+                    CapsuleFilterChip(title: "Local", icon: "internaldrive.fill", isSelected: section == 3) {
+                        withAnimation(.easeInOut(duration: 0.15)) { section = 3 }
+                    }
+                    CapsuleFilterChip(title: "Logs", icon: "doc.plaintext.fill", isSelected: section == 4) {
+                        withAnimation(.easeInOut(duration: 0.15)) { section = 4 }
+                    }
+                    CapsuleFilterChip(title: "Archiver", icon: "archivebox.fill", isSelected: section == 5) {
+                        withAnimation(.easeInOut(duration: 0.15)) { section = 5 }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
 
             switch section {
             case 0: FilesView(api: api)
@@ -192,6 +278,12 @@ struct DriveRootView: View {
         }
         .background(AppBackground())
         .navigationTitle("Tele-Drive")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if let uploads = try? await api.uploads() {
+                uploadCount = uploads.filter { $0.isActive }.count
+            }
+        }
     }
 }
 

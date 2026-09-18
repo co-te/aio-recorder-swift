@@ -188,8 +188,18 @@ private struct JobCard: View {
                     Spacer()
                     StatusPill(text: job.status, color: pillColor)
                 }
-                ProgressView(value: job.fraction)
-                    .tint(pillColor)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.10))
+                            .frame(height: 6)
+                        Capsule()
+                            .fill(pillColor)
+                            .frame(width: max(6, geo.size.width * CGFloat(job.fraction)), height: 6)
+                    }
+                }
+                .frame(height: 6)
+
                 HStack {
                     SecondaryLabel("\(Fmt.bytes(job.done)) / \(Fmt.bytes(job.total))", font: .caption2)
                     Spacer()
@@ -221,6 +231,7 @@ private struct JobCard: View {
 
     private var pillColor: Color {
         switch job.status {
+        case "uploading": return Theme.telegramSky
         case "done": return Theme.green
         case "error", "cancelled": return Theme.red
         case "paused": return Theme.warn
