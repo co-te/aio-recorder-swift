@@ -8,6 +8,7 @@ import SwiftUI
 struct CommandCenterView: View {
     let tikAPI: TikAPI
     let tangoAPI: TangoAPI
+    let stripAPI: StripAPI
     let minerAPI: MinerAPI
     let driveAPI: DriveAPI
     var onSelectTab: ((Int) -> Void)? = nil
@@ -19,6 +20,7 @@ struct CommandCenterView: View {
     @State private var tikRecordings: [TikRecording] = []
     @State private var tikSources: [TikSource] = []
     @State private var tangoStreamers: [TangoStreamer] = []
+    @State private var stripStreamers: [StripStreamer] = []
     @State private var minerStreamers: [StreamerState] = []
     @State private var minerRunning: Bool?
     @State private var driveUsage: TDUsage?
@@ -28,6 +30,7 @@ struct CommandCenterView: View {
     // Backend connectivity
     @State private var tikOnline: Bool?
     @State private var tangoOnline: Bool?
+    @State private var stripOnline: Bool?
     @State private var minerOnline: Bool?
     @State private var driveOnline: Bool?
 
@@ -283,6 +286,9 @@ struct CommandCenterView: View {
                 onSelectTab?(1)
             }
             healthPill(title: "Tango", isOnline: tangoOnline, icon: "phone.fill") {
+                onSelectTab?(1)
+            }
+            healthPill(title: "Strip", isOnline: stripOnline, icon: "flame.fill") {
                 onSelectTab?(1)
             }
             healthPill(title: "Miner", isOnline: minerOnline, icon: "diamond.fill") {
@@ -553,6 +559,16 @@ struct CommandCenterView: View {
             }
         } catch {
             await MainActor.run { self.tangoOnline = false }
+        }
+
+        do {
+            let streamers = try await stripAPI.streamers()
+            await MainActor.run {
+                self.stripStreamers = streamers
+                self.stripOnline = true
+            }
+        } catch {
+            await MainActor.run { self.stripOnline = false }
         }
 
         do {

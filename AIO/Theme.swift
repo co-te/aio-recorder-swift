@@ -16,6 +16,7 @@ enum Theme {
     static let tangoOrange = Color(red: 0xF9/255, green: 0x73/255, blue: 0x16/255)
     static let telegramSky = Color(red: 0x38/255, green: 0xBD/255, blue: 0xF8/255)
     static let tiktokPink = Color(red: 0xFE/255, green: 0x2C/255, blue: 0x55/255)
+    static let stripPink = Color(red: 0xFF/255, green: 0x7A/255, blue: 0xB8/255)
 
     static let bgTop = Color(red: 0x14/255, green: 0x0C/255, blue: 0x26/255)   // purple-leaning
     static let bgBottom = Color(red: 0x0A/255, green: 0x07/255, blue: 0x14/255)

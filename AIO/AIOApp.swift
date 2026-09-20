@@ -14,22 +14,26 @@ extension Notification.Name {
 struct AIOSettings: Equatable {
     var tik: TikSettings
     var tango: TangoSettings
+    var strip: StripSettings
     var miner: MinerSettings
     var drive: DriveSettings
 
     static func load() -> AIOSettings {
-        AIOSettings(tik: .load(), tango: .load(), miner: .load(), drive: .load())
+        AIOSettings(tik: .load(), tango: .load(), strip: .load(),
+                    miner: .load(), drive: .load())
     }
 
     func save() {
         tik.save()
         tango.save()
+        strip.save()
         miner.save()
         drive.save()
     }
 
     var hasAnyHost: Bool {
-        !tik.host.isEmpty || !tango.host.isEmpty || !miner.host.isEmpty || !drive.host.isEmpty
+        !tik.host.isEmpty || !tango.host.isEmpty || !strip.host.isEmpty
+            || !miner.host.isEmpty || !drive.host.isEmpty
     }
 }
 
@@ -66,6 +70,7 @@ struct AIOShell: View {
 
     @State private var tikAPI: TikAPI
     @State private var tangoAPI: TangoAPI
+    @State private var stripAPI: StripAPI
     @State private var minerAPI: MinerAPI
     @State private var driveAPI: DriveAPI
     @State private var tab = 0
@@ -77,6 +82,7 @@ struct AIOShell: View {
         let s = settings.wrappedValue
         _tikAPI = State(initialValue: TikAPI(settings: s.tik))
         _tangoAPI = State(initialValue: TangoAPI(settings: s.tango))
+        _stripAPI = State(initialValue: StripAPI(settings: s.strip))
         _minerAPI = State(initialValue: MinerAPI(settings: s.miner))
         _driveAPI = State(initialValue: DriveAPI(settings: s.drive))
     }
@@ -87,6 +93,7 @@ struct AIOShell: View {
                 CommandCenterView(
                     tikAPI: tikAPI,
                     tangoAPI: tangoAPI,
+                    stripAPI: stripAPI,
                     minerAPI: minerAPI,
                     driveAPI: driveAPI,
                     onSelectTab: { newTab in tab = newTab }
@@ -95,7 +102,7 @@ struct AIOShell: View {
             .tabItem { Label("Overview", systemImage: "sparkles") }.tag(0)
 
             NavigationStack {
-                RecordersRootView(tikAPI: tikAPI, tangoAPI: tangoAPI)
+                RecordersRootView(tikAPI: tikAPI, tangoAPI: tangoAPI, stripAPI: stripAPI)
             }
             .tabItem { Label("Recorders", systemImage: "record.circle.fill") }.tag(1)
 
@@ -110,6 +117,7 @@ struct AIOShell: View {
                     settings = updated
                     tikAPI = TikAPI(settings: updated.tik)
                     tangoAPI = TangoAPI(settings: updated.tango)
+                    stripAPI = StripAPI(settings: updated.strip)
                     minerAPI = MinerAPI(settings: updated.miner)
                     driveAPI = DriveAPI(settings: updated.drive)
                 }
@@ -154,6 +162,7 @@ struct AIOShell: View {
 struct RecordersRootView: View {
     let tikAPI: TikAPI
     let tangoAPI: TangoAPI
+    let stripAPI: StripAPI
     @State private var selected = 0
 
     var body: some View {
@@ -177,6 +186,15 @@ struct RecordersRootView: View {
                     withAnimation(.easeInOut(duration: 0.15)) { selected = 1 }
                 }
 
+                CapsuleFilterChip(
+                    title: "Stripchat",
+                    icon: "flame.fill",
+                    badgeColor: Theme.stripPink,
+                    isSelected: selected == 2
+                ) {
+                    withAnimation(.easeInOut(duration: 0.15)) { selected = 2 }
+                }
+
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -184,12 +202,15 @@ struct RecordersRootView: View {
 
             if selected == 0 {
                 TikRootView(api: tikAPI)
-            } else {
+            } else if selected == 1 {
                 TangoRootView(api: tangoAPI)
+            } else {
+                StripRootView(api: stripAPI)
             }
         }
         .background(AppBackground())
-        .navigationTitle(selected == 0 ? "Tik Recorder" : "Tango Recorder")
+        .navigationTitle(selected == 0 ? "Tik Recorder"
+                         : (selected == 1 ? "Tango Recorder" : "Stripchat Recorder"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -297,6 +318,8 @@ struct AIOSettingsView: View {
     @State private var tikPort = ""
     @State private var tangoHost = ""
     @State private var tangoPort = ""
+    @State private var stripHost = ""
+    @State private var stripPort = ""
     @State private var minerHost = ""
     @State private var minerPort = ""
     @State private var minerToken = ""
@@ -327,6 +350,13 @@ struct AIOSettingsView: View {
                         CardHeader(title: "Tango recorder", icon: "phone.fill")
                         GlassField(icon: "wifi", placeholder: "Pi IP", text: $tangoHost, keyboard: .decimalPad)
                         GlassField(icon: "number", placeholder: "Port (8091)", text: $tangoPort, keyboard: .numberPad)
+                    }
+                }
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        CardHeader(title: "Stripchat recorder", icon: "flame.fill")
+                        GlassField(icon: "wifi", placeholder: "Pi IP", text: $stripHost, keyboard: .decimalPad)
+                        GlassField(icon: "number", placeholder: "Port (8092)", text: $stripPort, keyboard: .numberPad)
                     }
                 }
                 GlassCard {
@@ -439,6 +469,8 @@ struct AIOSettingsView: View {
         tikPort = String(settings.tik.port)
         tangoHost = settings.tango.host
         tangoPort = String(settings.tango.port)
+        stripHost = settings.strip.host
+        stripPort = String(settings.strip.port)
         minerHost = settings.miner.host
         minerPort = String(settings.miner.port)
         minerToken = settings.miner.token
@@ -450,6 +482,7 @@ struct AIOSettingsView: View {
     private func current() -> AIOSettings {
         let cleanTik = tikHost.trimmingCharacters(in: .whitespaces)
         let cleanTango = tangoHost.trimmingCharacters(in: .whitespaces)
+        let cleanStrip = stripHost.trimmingCharacters(in: .whitespaces)
         let cleanMiner = minerHost.trimmingCharacters(in: .whitespaces)
         let cleanDrive = driveHost.trimmingCharacters(in: .whitespaces)
         return AIOSettings(
@@ -459,6 +492,9 @@ struct AIOSettingsView: View {
             tango: TangoSettings(
                 host: cleanTango,
                 port: Int(tangoPort) ?? settings.tango.port),
+            strip: StripSettings(
+                host: cleanStrip,
+                port: Int(stripPort) ?? settings.strip.port),
             miner: MinerSettings(
                 host: cleanMiner,
                 port: Int(minerPort) ?? settings.miner.port,
@@ -483,6 +519,10 @@ struct AIOSettingsView: View {
             _ = try await TangoAPI(settings: c.tango).streamers()
             lines.append("Tango: reachable")
         } catch { lines.append("Tango: \(error.messageText)") }
+        do {
+            _ = try await StripAPI(settings: c.strip).streamers()
+            lines.append("Strip: reachable")
+        } catch { lines.append("Strip: \(error.messageText)") }
         do {
             let running = try await MinerAPI(settings: c.miner).minerStatus()
             lines.append(running ? "Miner: authenticated + running" : "Miner: authenticated, process offline")
@@ -561,12 +601,14 @@ struct AIOConnectScreen: View {
         let s = AIOSettings(
             tik: TikSettings(host: h, port: 8090),
             tango: TangoSettings(host: h, port: 8091),
+            strip: StripSettings(host: h, port: 8092),
             miner: MinerSettings(host: h, port: 8000, token: minerToken, refreshSeconds: 10),
             drive: DriveSettings(host: h, port: 8001, token: driveToken))
         // Verify at least one backend answers before entering.
         var ok = false
         if (try? await TikAPI(settings: s.tik).sources()) != nil { ok = true }
         if (try? await TangoAPI(settings: s.tango).streamers()) != nil { ok = true }
+        if (try? await StripAPI(settings: s.strip).streamers()) != nil { ok = true }
         if (try? await MinerAPI(settings: s.miner).minerStatus()) != nil { ok = true }
         if (try? await DriveAPI(settings: s.drive).checkAuth()) == true { ok = true }
         guard ok else {
