@@ -41,6 +41,8 @@ struct AIOSettings: Equatable {
 struct AIOApp: App {
     @State private var settings: AIOSettings
     @State private var connected: Bool
+    @ObservedObject private var security = SecurityManager.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         Theme.apply()
@@ -51,12 +53,61 @@ struct AIOApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if connected {
-                AIOShell(settings: $settings)
-            } else {
-                AIOConnectScreen { s in
-                    settings = s
-                    connected = true
+            Group {
+                if connected {
+                    if security.isBiometricEnabled && !security.isUnlocked {
+                        VStack(spacing: 20) {
+                            Image(systemName: "lock.shield.fill")
+                                .font(.system(size: 64))
+                                .foregroundStyle(Theme.blue)
+                            Text("AIO Controller Locked")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(Theme.textPrimary)
+                            Text("Authenticate to access stream recorders and drive.")
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                                .multilineTextAlignment(.center)
+                            GlassButton(title: "Unlock with Face ID", icon: "faceid", tint: Theme.blue, prominent: true) {
+                                security.authenticate { _ in }
+                            }
+                        }
+                        .padding(32)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(AppBackground())
+                        .onAppear {
+                            security.authenticate { _ in }
+                        }
+                    } else {
+                        AIOShell(settings: $settings)
+                    }
+                } else {
+                    AIOConnectScreen { s in
+                        settings = s
+                        connected = true
+                    }
+                }
+            }
+            .overlay {
+                if scenePhase != .active && security.isPrivacyBlurEnabled {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .ignoresSafeArea()
+                        .overlay {
+                            VStack(spacing: 12) {
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.system(size: 44))
+                                    .foregroundStyle(Theme.blue)
+                                Text("AIO Controller")
+                                    .font(.headline)
+                                    .foregroundStyle(Theme.textPrimary)
+                            }
+                        }
+                }
+            }
+            .onChange(of: scenePhase) { phase in
+                if phase == .background && security.isBiometricEnabled {
+                    security.isUnlocked = false
                 }
             }
         }
@@ -352,238 +403,7 @@ struct DriveRootView: View {
     }
 }
 
-// MARK: - Settings (all four backends)
 
-struct AIOSettingsView: View {
-    @Binding var settings: AIOSettings
-    let onApplied: (AIOSettings) -> Void
-
-    @State private var tikHost = ""
-    @State private var tikPort = ""
-    @State private var tangoHost = ""
-    @State private var tangoPort = ""
-    @State private var stripHost = ""
-    @State private var stripPort = ""
-    @State private var minerHost = ""
-    @State private var minerPort = ""
-    @State private var minerToken = ""
-    @State private var driveHost = ""
-    @State private var drivePort = ""
-    @State private var driveToken = ""
-    @State private var testing = false
-    @State private var testLines: [String] = []
-    @State private var driveUsage: TDUsage?
-    @State private var maxConc = 2
-    @State private var driveNote: String?
-    @State private var confirmLogout = false
-
-    private var driveAPI: DriveAPI { DriveAPI(settings: current().drive) }
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        CardHeader(title: "Tik recorder", icon: "video.fill")
-                        GlassField(icon: "wifi", placeholder: "Pi IP", text: $tikHost, keyboard: .decimalPad)
-                        GlassField(icon: "number", placeholder: "Port (8090)", text: $tikPort, keyboard: .numberPad)
-                    }
-                }
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        CardHeader(title: "Tango recorder", icon: "phone.fill")
-                        GlassField(icon: "wifi", placeholder: "Pi IP", text: $tangoHost, keyboard: .decimalPad)
-                        GlassField(icon: "number", placeholder: "Port (8091)", text: $tangoPort, keyboard: .numberPad)
-                    }
-                }
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        CardHeader(title: "Stripchat recorder", icon: "flame.fill")
-                        GlassField(icon: "wifi", placeholder: "Pi IP", text: $stripHost, keyboard: .decimalPad)
-                        GlassField(icon: "number", placeholder: "Port (8092)", text: $stripPort, keyboard: .numberPad)
-                    }
-                }
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        CardHeader(title: "Points miner", icon: "diamond.fill")
-                        GlassField(icon: "wifi", placeholder: "Pi IP", text: $minerHost, keyboard: .decimalPad)
-                        GlassField(icon: "number", placeholder: "Port (8000)", text: $minerPort, keyboard: .numberPad)
-                        GlassField(icon: "key.fill", placeholder: "TTV_API_TOKEN", text: $minerToken, secure: true)
-                    }
-                }
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        CardHeader(title: "Tele-Drive", icon: "externaldrive.fill")
-                        GlassField(icon: "wifi", placeholder: "Pi IP", text: $driveHost, keyboard: .decimalPad)
-                        GlassField(icon: "number", placeholder: "Port (8001)", text: $drivePort, keyboard: .numberPad)
-                        GlassField(icon: "key.fill", placeholder: "API token", text: $driveToken, secure: true)
-                    }
-                }
-
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        CardHeader(title: "Connections", icon: "bolt.horizontal")
-                        HStack {
-                            GlassButton(title: "Test all", icon: "dot.radiowaves.left.and.right", tint: Theme.blue) {
-                                Task { await testAll() }
-                            }
-                            .disabled(testing)
-                            if testing { ProgressView().tint(.white) }
-                            Spacer()
-                        }
-                        ForEach(testLines, id: \.self) { line in
-                            Text(line).font(.caption2).foregroundStyle(Theme.textSecondary)
-                        }
-                    }
-                }
-
-                if let driveUsage {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            CardHeader(title: "Drive daily quota", icon: "gauge.with.dots.needle.67percent")
-                            ProgressView(value: driveUsage.fractionUsed)
-                                .tint(driveUsage.fractionUsed > 0.9 ? Theme.red : Theme.blue)
-                            SecondaryLabel(
-                                "\(Fmt.bytes(driveUsage.uploadedBytes)) of \(Fmt.bytes(driveUsage.limitBytes)) used · \(Fmt.bytes(driveUsage.remainingBytes)) left",
-                                font: .caption)
-                            HStack {
-                                GlassButton(title: "Reset", icon: "arrow.counterclockwise", tint: Theme.warn) {
-                                    Task {
-                                        try? await driveAPI.resetUsage()
-                                        await loadDrive()
-                                    }
-                                }
-                                Spacer()
-                            }
-                        }
-                    }
-                }
-
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        CardHeader(title: "Drive uploads", icon: "cloud.upload")
-                        Stepper("Max concurrent: \(maxConc)", value: $maxConc, in: 1...8)
-                            .foregroundStyle(Theme.textPrimary)
-                            .onChange(of: maxConc) { n in
-                                Task { try? await driveAPI.saveMaxConcurrent(n) }
-                            }
-                        HStack(spacing: 10) {
-                            GlassButton(title: "Sync", icon: "arrow.triangle.2.circlepath", tint: Theme.green) {
-                                Task {
-                                    try? await driveAPI.sync()
-                                    driveNote = "Sync requested."
-                                }
-                            }
-                            GlassButton(title: "Logout", icon: "rectangle.portrait.and.arrow.right", tint: Theme.red) {
-                                confirmLogout = true
-                            }
-                        }
-                        if let driveNote {
-                            SecondaryLabel(driveNote, font: .caption)
-                        }
-                    }
-                }
-                .confirmationDialog("Log out of Telegram on the server?", isPresented: $confirmLogout) {
-                    Button("Logout", role: .destructive) {
-                        Task { try? await driveAPI.logout() }
-                    }
-                }
-
-                GlassButton(title: "Save", icon: "checkmark", tint: Theme.blue, prominent: true) {
-                    apply()
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
-        }
-        .background(AppBackground())
-        .navigationTitle("Settings")
-        .onAppear { fill() }
-        .task { await loadDrive() }
-    }
-
-    private func loadDrive() async {
-        driveUsage = try? await driveAPI.usage()
-        if let n = try? await driveAPI.maxConcurrent() { maxConc = n }
-    }
-
-    private func fill() {
-        tikHost = settings.tik.host
-        tikPort = String(settings.tik.port)
-        tangoHost = settings.tango.host
-        tangoPort = String(settings.tango.port)
-        stripHost = settings.strip.host
-        stripPort = String(settings.strip.port)
-        minerHost = settings.miner.host
-        minerPort = String(settings.miner.port)
-        minerToken = settings.miner.token
-        driveHost = settings.drive.host
-        drivePort = String(settings.drive.port)
-        driveToken = settings.drive.token
-    }
-
-    private func current() -> AIOSettings {
-        let cleanTik = tikHost.trimmingCharacters(in: .whitespaces)
-        let cleanTango = tangoHost.trimmingCharacters(in: .whitespaces)
-        let cleanStrip = stripHost.trimmingCharacters(in: .whitespaces)
-        let cleanMiner = minerHost.trimmingCharacters(in: .whitespaces)
-        let cleanDrive = driveHost.trimmingCharacters(in: .whitespaces)
-        return AIOSettings(
-            tik: TikSettings(
-                host: cleanTik,
-                port: Int(tikPort) ?? settings.tik.port),
-            tango: TangoSettings(
-                host: cleanTango,
-                port: Int(tangoPort) ?? settings.tango.port),
-            strip: StripSettings(
-                host: cleanStrip,
-                port: Int(stripPort) ?? settings.strip.port),
-            miner: MinerSettings(
-                host: cleanMiner,
-                port: Int(minerPort) ?? settings.miner.port,
-                token: minerToken,
-                refreshSeconds: settings.miner.refreshSeconds),
-            drive: DriveSettings(
-                host: cleanDrive,
-                port: Int(drivePort) ?? settings.drive.port,
-                token: driveToken))
-    }
-
-    private func testAll() async {
-        testing = true
-        defer { testing = false }
-        let c = current()
-        var lines: [String] = []
-        do {
-            _ = try await TikAPI(settings: c.tik).sources()
-            lines.append("Tik: reachable")
-        } catch { lines.append("Tik: \(error.messageText)") }
-        do {
-            _ = try await TangoAPI(settings: c.tango).streamers()
-            lines.append("Tango: reachable")
-        } catch { lines.append("Tango: \(error.messageText)") }
-        do {
-            _ = try await StripAPI(settings: c.strip).streamers()
-            lines.append("Strip: reachable")
-        } catch { lines.append("Strip: \(error.messageText)") }
-        do {
-            let running = try await MinerAPI(settings: c.miner).minerStatus()
-            lines.append(running ? "Miner: authenticated + running" : "Miner: authenticated, process offline")
-        } catch { lines.append("Miner: \(error.messageText)") }
-        do {
-            let ok = try await DriveAPI(settings: c.drive).checkAuth()
-            lines.append(ok ? "Drive: authenticated" : "Drive: token rejected")
-        } catch { lines.append("Drive: \(error.messageText)") }
-        testLines = lines
-    }
-
-    private func apply() {
-        let s = current()
-        s.save()
-        onApplied(s)
-    }
-}
 
 // MARK: - Connect
 

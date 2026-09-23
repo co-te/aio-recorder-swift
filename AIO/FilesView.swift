@@ -296,7 +296,7 @@ struct FileDetailSheet: View {
                     HStack(spacing: 10) {
                         if file.type == "video" || file.type == "audio" {
                             GlassButton(title: "Play", icon: "play.fill", tint: Theme.blue) {
-                                Task { await play() }
+                                play()
                             }
                         }
                         if file.type == "text" || file.type == "message" {
@@ -346,14 +346,20 @@ struct FileDetailSheet: View {
                 TextEditSheet(api: api, file: file, initial: textContent)
             }
             .fullScreenCover(item: $playerTarget) { target in
-                VideoPlayer(player: AVPlayer(url: target.url))
+                VideoPlayer(player: target.player)
                     .ignoresSafeArea()
                     .overlay(alignment: .topLeading) {
-                        Button { playerTarget = nil } label: {
+                        Button {
+                            target.player.pause()
+                            playerTarget = nil
+                        } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.title).foregroundStyle(.white.opacity(0.8))
                         }
                         .padding()
+                    }
+                    .onDisappear {
+                        target.player.pause()
                     }
             }
             .sheet(item: $shareTarget) { target in
@@ -376,11 +382,17 @@ struct FileDetailSheet: View {
         }
     }
 
-    private func play() async {
+    private func play() {
         busy = true
         defer { busy = false }
-        do { playerTarget = PlayerTarget(url: try await api.downloadToTemp(file)) }
-        catch { err = error.messageText }
+        do {
+            let item = try api.preparePlayerItem(for: file)
+            let p = AVPlayer(playerItem: item)
+            playerTarget = PlayerTarget(id: file.rowId, player: p)
+            p.play()
+        } catch {
+            err = error.messageText
+        }
     }
 
     private func save() async {
@@ -433,8 +445,8 @@ private struct TextEditSheet: View {
 // MARK: - Identifiable URL wrappers (for sheet/fullScreenCover item:)
 
 struct PlayerTarget: Identifiable {
-    let url: URL
-    var id: String { url.absoluteString }
+    let id: String
+    let player: AVPlayer
 }
 
 struct ShareTarget: Identifiable {

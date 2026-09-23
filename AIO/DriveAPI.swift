@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import AVFoundation
 
 // MARK: - Models (shapes verified against app/tg.py, upload_queue.py, eventlog.py, main.py)
 
@@ -546,9 +547,44 @@ final class DriveAPI {
         return (obj?["state"] as? String) ?? "requested"
     }
 
+    /// Direct stream URL for Range-based media streaming via /api/stream
+    func streamURL(_ file: TDFile) throws -> URL {
+        let safePeer = file.peerType.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file.peerType
+        return try url("/api/stream/\(safePeer)/\(file.peerId)/\(file.id)")
+    }
+
+    /// Sets the td_token cookie in shared storage so AVPlayer / AVURLAsset automatically sends it
+    func setAuthCookie() {
+        guard let u = URL(string: settings.baseURL), !settings.token.isEmpty else { return }
+        let cookieProps: [HTTPCookiePropertyKey: Any] = [
+            .domain: u.host ?? settings.host,
+            .path: "/",
+            .name: "td_token",
+            .value: settings.token,
+            .secure: "FALSE",
+            .expires: Date().addingTimeInterval(86400 * 365)
+        ]
+        if let cookie = HTTPCookie(properties: cookieProps) {
+            HTTPCookieStorage.shared.setCookie(cookie)
+        }
+    }
+
+    /// Prepares an AVPlayerItem with streaming headers and auth cookie for instant playback
+    func preparePlayerItem(for file: TDFile) throws -> AVPlayerItem {
+        setAuthCookie()
+        let u = try streamURL(file)
+        var headers: [String: String] = [:]
+        if !settings.token.isEmpty {
+            headers["Authorization"] = "Bearer \(settings.token)"
+        }
+        let asset = AVURLAsset(url: u, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        return AVPlayerItem(asset: asset)
+    }
+
     func downloadToTemp(_ file: TDFile) async throws -> URL {
         let safePeer = file.peerType.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file.peerType
-        let req = try getRequest("/api/download/\(safePeer)/\(file.peerId)/\(file.id)")
+        var req = try getRequest("/api/download/\(safePeer)/\(file.peerId)/\(file.id)")
+        req.timeoutInterval = 600 // 10 minutes timeout for large video downloads
         let (tempURL, resp) = try await session.download(for: req)
         guard (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) else {
             throw APIError(statusCode: (resp as? HTTPURLResponse)?.statusCode ?? 0, message: "Download failed")
