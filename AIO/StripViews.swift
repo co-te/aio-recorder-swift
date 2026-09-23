@@ -25,7 +25,6 @@ struct StripRootView: View {
             }
         }
         .background(AppBackground())
-        .navigationTitle("Stripchat recorder")
     }
 }
 

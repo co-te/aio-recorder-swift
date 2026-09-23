@@ -11,7 +11,7 @@ struct CommandCenterView: View {
     let stripAPI: StripAPI
     let minerAPI: MinerAPI
     let driveAPI: DriveAPI
-    var onSelectTab: ((Int) -> Void)? = nil
+    var onSelectTab: ((Int, Int?) -> Void)? = nil
 
     @State private var loading = false
     @State private var lastRefresh = Date()
@@ -24,7 +24,6 @@ struct CommandCenterView: View {
     @State private var minerStreamers: [StreamerState] = []
     @State private var minerRunning: Bool?
     @State private var driveUsage: TDUsage?
-    @State private var driveUploads: [TDUploadJob] = []
     @State private var archiverStatus: ArchiverStatus?
 
     // Backend connectivity
@@ -113,12 +112,12 @@ struct CommandCenterView: View {
         tangoStreamers.filter { $0.isRecording }
     }
 
-    private var activeUploadJobs: [TDUploadJob] {
-        driveUploads.filter { $0.isActive }
+    private var activeStripStreamers: [StripStreamer] {
+        stripStreamers.filter { $0.isRecording }
     }
 
     private var hasActiveOperations: Bool {
-        !activeTikRecordings.isEmpty || !activeTangoStreamers.isEmpty || !activeUploadJobs.isEmpty
+        !activeTikRecordings.isEmpty || !activeTangoStreamers.isEmpty || !activeStripStreamers.isEmpty
     }
 
     @ViewBuilder
@@ -132,7 +131,7 @@ struct CommandCenterView: View {
                         subtitle: "\(Fmt.duration(rec.elapsed)) · \(Fmt.bytes(rec.sizeBytes))",
                         tint: rec.platform == "tiktok" ? Theme.tiktokPink : Theme.twitch
                     ) {
-                        onSelectTab?(1)
+                        onSelectTab?(1, 0)
                     }
                 }
 
@@ -143,13 +142,18 @@ struct CommandCenterView: View {
                         subtitle: "\(Fmt.duration(Double(streamer.seconds))) · \(streamer.segments) segs",
                         tint: Theme.tangoOrange
                     ) {
-                        onSelectTab?(1)
+                        onSelectTab?(1, 1)
                     }
                 }
 
-                ForEach(activeUploadJobs) { job in
-                    activeUploadRow(job: job) {
-                        onSelectTab?(3)
+                ForEach(activeStripStreamers) { streamer in
+                    activeRecordingRow(
+                        platform: "Stripchat",
+                        title: streamer.handle,
+                        subtitle: "\(Fmt.duration(Double(streamer.seconds))) · \(streamer.segments) segs",
+                        tint: Theme.stripPink
+                    ) {
+                        onSelectTab?(1, 2)
                     }
                 }
             }
@@ -162,7 +166,7 @@ struct CommandCenterView: View {
                             .font(.subheadline)
                             .fontWeight(.semibold)
                             .foregroundStyle(Theme.textPrimary)
-                        Text("\(tikSources.count + tangoStreamers.count) channels monitored · Upload queue idle")
+                        Text("\(tikSources.count + tangoStreamers.count + stripStreamers.count) channels monitored · Standby")
                             .font(.caption)
                             .foregroundStyle(Theme.textSecondary)
                     }
@@ -222,80 +226,24 @@ struct CommandCenterView: View {
         .buttonStyle(BouncyButtonStyle())
     }
 
-    private func activeUploadRow(job: TDUploadJob, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    PulsingRadar(color: Theme.telegramSky, size: 8)
-                    Text("UPLOADING")
-                        .font(.caption2)
-                        .fontWeight(.black)
-                        .foregroundStyle(Theme.telegramSky)
-                    Spacer()
-                    Text("\(Int(job.fraction * 100))%")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(Theme.telegramSky)
-                }
-
-                Text(job.name)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
-
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.white.opacity(0.10))
-                            .frame(height: 6)
-                        Capsule()
-                            .fill(LinearGradient(colors: [Theme.telegramSky, Theme.blue], startPoint: .leading, endPoint: .trailing))
-                            .frame(width: max(6, geo.size.width * CGFloat(job.fraction)), height: 6)
-                    }
-                }
-                .frame(height: 6)
-
-                HStack {
-                    Text("\(Fmt.bytes(job.done)) / \(Fmt.bytes(job.total))")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.textSecondary)
-                    Spacer()
-                    Text(job.status.capitalized)
-                        .font(.caption2)
-                        .foregroundStyle(Theme.telegramSky)
-                }
-            }
-            .padding(14)
-            .background(Theme.cardFallback)
-            .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Theme.telegramSky.opacity(0.35), lineWidth: 1)
-            )
-        }
-        .buttonStyle(BouncyButtonStyle())
-    }
-
     // MARK: - Service Health Row
 
     private var serviceHealthRow: some View {
         HStack(spacing: 8) {
             healthPill(title: "Tik", isOnline: tikOnline, icon: "video.fill") {
-                onSelectTab?(1)
+                onSelectTab?(1, 0)
             }
             healthPill(title: "Tango", isOnline: tangoOnline, icon: "phone.fill") {
-                onSelectTab?(1)
+                onSelectTab?(1, 1)
             }
             healthPill(title: "Strip", isOnline: stripOnline, icon: "flame.fill") {
-                onSelectTab?(1)
+                onSelectTab?(1, 2)
             }
             healthPill(title: "Miner", isOnline: minerOnline, icon: "diamond.fill") {
-                onSelectTab?(2)
+                onSelectTab?(2, nil)
             }
             healthPill(title: "Drive", isOnline: driveOnline, icon: "externaldrive.fill") {
-                onSelectTab?(3)
+                onSelectTab?(3, nil)
             }
         }
     }
@@ -332,8 +280,9 @@ struct CommandCenterView: View {
     private var onlineStreamerCount: Int {
         let tikLive = tikSources.filter { $0.currentlyLive }.count
         let tangoLive = tangoStreamers.filter { $0.isLive }.count
+        let stripLive = stripStreamers.filter { $0.isLive }.count
         let twitchLive = minerStreamers.filter { $0.isOnline }.count
-        return tikLive + tangoLive + twitchLive
+        return tikLive + tangoLive + stripLive + twitchLive
     }
 
     private var telemetryBentoGrid: some View {
@@ -345,7 +294,7 @@ struct CommandCenterView: View {
                 subtitle: "\(minerStreamers.filter { $0.isOnline }.count) active miners",
                 tint: Theme.twitch
             ) {
-                onSelectTab?(2)
+                onSelectTab?(2, 0)
             }
 
             MetricCard(
@@ -355,17 +304,17 @@ struct CommandCenterView: View {
                 subtitle: driveUsage != nil ? "\(Int(driveUsage!.fractionUsed * 100))% of limit" : "No usage data",
                 tint: Theme.telegramSky
             ) {
-                onSelectTab?(3)
+                onSelectTab?(3, 0)
             }
 
             MetricCard(
                 icon: "dot.radiowaves.left.and.right",
                 title: "Live Streamers",
                 value: "\(onlineStreamerCount)",
-                subtitle: "\(activeTikRecordings.count + activeTangoStreamers.count) recording now",
+                subtitle: "\(activeTikRecordings.count + activeTangoStreamers.count + activeStripStreamers.count) recording now",
                 tint: Theme.tiktokPink
             ) {
-                onSelectTab?(1)
+                onSelectTab?(1, 0)
             }
 
             MetricCard(
@@ -375,7 +324,7 @@ struct CommandCenterView: View {
                 subtitle: "\(archiverStatus?.active.uploaded ?? 0) archived today",
                 tint: Theme.tangoOrange
             ) {
-                onSelectTab?(3)
+                onSelectTab?(3, 5)
             }
         }
     }
@@ -389,6 +338,9 @@ struct CommandCenterView: View {
         }
         for s in tangoStreamers where s.isLive {
             items.append(LiveStreamerItem(id: "tango-\(s.handle)", platform: "Tango", handle: s.handle, title: "\(s.segments) segments", isRecording: s.isRecording))
+        }
+        for s in stripStreamers where s.isLive {
+            items.append(LiveStreamerItem(id: "strip-\(s.handle)", platform: "Stripchat", handle: s.handle, title: "\(s.segments) segments", isRecording: s.isRecording))
         }
         for s in minerStreamers where s.isOnline {
             items.append(LiveStreamerItem(id: "miner-\(s.username)", platform: "Twitch", handle: s.username, title: s.game.isEmpty ? s.title : s.game, isRecording: false))
@@ -450,7 +402,12 @@ struct CommandCenterView: View {
                                 StatusPill(text: "REC", color: Theme.red)
                             } else {
                                 Button {
-                                    onSelectTab?(1)
+                                    switch streamer.platform.lowercased() {
+                                    case "tango": onSelectTab?(1, 1)
+                                    case "stripchat": onSelectTab?(1, 2)
+                                    case "twitch": onSelectTab?(2, nil)
+                                    default: onSelectTab?(1, 0)
+                                    }
                                 } label: {
                                     Image(systemName: "record.circle")
                                         .font(.subheadline)
@@ -473,12 +430,17 @@ struct CommandCenterView: View {
     private var quickActionsSection: some View {
         BentoCard(headerIcon: "bolt.fill", headerTitle: "Quick Commands", badgeColor: Theme.gold) {
             VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    GlassButton(title: "Check Tango", icon: "antenna.radiowaves.left.and.right", tint: Theme.tangoOrange) {
-                        Task { await checkTango() }
-                    }
-                    GlassButton(title: "Run Archiver", icon: "arrow.triangle.2.circlepath", tint: Theme.telegramSky) {
-                        Task { await runArchiver() }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        GlassButton(title: "Check Tango", icon: "antenna.radiowaves.left.and.right", tint: Theme.tangoOrange) {
+                            Task { await checkTango() }
+                        }
+                        GlassButton(title: "Check Strip", icon: "flame.fill", tint: Theme.stripPink) {
+                            Task { await checkStrip() }
+                        }
+                        GlassButton(title: "Run Archiver", icon: "arrow.triangle.2.circlepath", tint: Theme.telegramSky) {
+                            Task { await runArchiver() }
+                        }
                     }
                 }
 
@@ -506,6 +468,21 @@ struct CommandCenterView: View {
             await refreshQuiet()
         } catch {
             withAnimation { actionMessage = "Tango check failed: \(error.messageText)" }
+        }
+        actionBusy = false
+    }
+
+    private func checkStrip() async {
+        guard !actionBusy else { return }
+        actionBusy = true
+        withAnimation { actionMessage = "Checking Stripchat live status..." }
+        do {
+            let statuses = try await stripAPI.check()
+            let liveCount = statuses.values.filter { $0 == "recording" || $0 == "live" }.count
+            withAnimation { actionMessage = "Stripchat check complete: \(liveCount) live" }
+            await refreshQuiet()
+        } catch {
+            withAnimation { actionMessage = "Stripchat check failed: \(error.messageText)" }
         }
         actionBusy = false
     }
@@ -593,11 +570,9 @@ struct CommandCenterView: View {
 
         do {
             let usage = try await driveAPI.usage()
-            let uploads = try await driveAPI.uploadJobs()
             let archiver = try? await driveAPI.archiverStatus()
             await MainActor.run {
                 self.driveUsage = usage
-                self.driveUploads = uploads
                 self.archiverStatus = archiver
                 self.driveOnline = true
             }
@@ -618,6 +593,7 @@ private struct LiveStreamerItem: Identifiable {
         switch platform.lowercased() {
         case "tiktok": return Theme.tiktokPink
         case "tango": return Theme.tangoOrange
+        case "stripchat": return Theme.stripPink
         case "twitch": return Theme.twitch
         default: return Theme.blue
         }

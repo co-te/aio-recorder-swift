@@ -54,7 +54,6 @@ struct LogsView: View {
     var body: some View {
         content
             .background(AppBackground())
-            .navigationTitle("Logs")
             .searchable(text: $query, prompt: "Filter logs")
             .refreshable { await load() }
             .task { await load() }

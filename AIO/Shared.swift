@@ -117,8 +117,11 @@ struct AuthedImage: View {
                     .scaledToFill()
             } else {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
-                    .overlay { Image(systemName: Self.icon(for: file.type)).foregroundStyle(Theme.textSecondary) }
+                    .fill(Self.iconColor(for: file.type).opacity(0.12))
+                    .overlay {
+                        Image(systemName: Self.icon(for: file.type))
+                            .foregroundStyle(Self.iconColor(for: file.type))
+                    }
             }
         }
         .frame(width: size, height: size)
@@ -137,6 +140,17 @@ struct AuthedImage: View {
         case "text", "message": return "doc.text"
         case "link": return "link"
         default: return "doc"
+        }
+    }
+
+    static func iconColor(for type: String) -> Color {
+        switch type {
+        case "video": return Theme.telegramSky
+        case "image": return Theme.tiktokPink
+        case "audio": return Theme.warn
+        case "text", "message": return Theme.green
+        case "link": return Theme.cyan
+        default: return Theme.textSecondary
         }
     }
 }

@@ -35,9 +35,12 @@ struct ViewsView: View {
             .refreshable { await load() }
             .task {
                 groups = (try? await api.groups()) ?? []
+                await load()
                 while !Task.isCancelled {
-                    await load()
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    if !Task.isCancelled {
+                        await loadQuiet()
+                    }
                 }
             }
             .sheet(item: $detail) { f in
@@ -190,6 +193,16 @@ struct ViewsView: View {
             errorText = nil
         } catch {
             errorText = error.messageText
+        }
+    }
+
+    private func loadQuiet() async {
+        guard !loading else { return }
+        if let g = try? await api.groups() { groups = g }
+        if let fresh = try? await api.view(
+            selected,
+            group: selected == "group" && !groupFilter.isEmpty ? groupFilter : nil) {
+            items = fresh
         }
     }
 

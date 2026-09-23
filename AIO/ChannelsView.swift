@@ -15,7 +15,6 @@ struct ChannelsView: View {
     var body: some View {
         content
             .background(AppBackground())
-            .navigationTitle("Channels")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showAdd = true } label: { Image(systemName: "plus") }

@@ -54,9 +54,12 @@ struct LocalView: View {
             .task {
                 folders = (try? await api.folders()) ?? []
                 if target == nil { target = folders.first }
+                await load()
                 while !Task.isCancelled {
-                    await load()
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    if !Task.isCancelled {
+                        await loadQuiet()
+                    }
                 }
             }
     }
@@ -195,6 +198,20 @@ struct LocalView: View {
             selection.formIntersection(entries.map(\.path))
         } catch {
             errorText = error.messageText
+        }
+    }
+
+    private func loadQuiet() async {
+        guard !batchBusy else { return }
+        if let r = try? await api.localList(path: path) {
+            let sorted = r.entries.sorted {
+                if $0.isDir != $1.isDir { return $0.isDir }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            if sorted.map(\.path) != entries.map(\.path) {
+                entries = sorted
+                selection.formIntersection(entries.map(\.path))
+            }
         }
     }
 

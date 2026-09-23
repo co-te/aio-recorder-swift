@@ -504,6 +504,22 @@ final class DriveAPI {
 
     /// Recording-archiver progress (status.json written by the Pi script).
     func archiverStatus() async throws -> ArchiverStatus {
+        // First try the dedicated /api/archiver/status endpoint
+        if let req = try? getRequest("/api/archiver/status"),
+           let (data, resp) = try? await session.data(for: req),
+           (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) {
+            struct Wrap: Decodable {
+                let status: ArchiverStatus?
+            }
+            if let wrap = try? decoder.decode(Wrap.self, from: data), let s = wrap.status {
+                return s
+            }
+            if let direct = try? decoder.decode(ArchiverStatus.self, from: data) {
+                return direct
+            }
+        }
+
+        // Fall back to reading status.json directly via /api/local/file
         var req = URLRequest(url: try url("/api/local/file", ["path": "recording-archiver/status.json"]))
         req.allHTTPHeaderFields = bearer
         req.timeoutInterval = 15

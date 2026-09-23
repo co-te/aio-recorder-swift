@@ -62,26 +62,31 @@ struct FilesView: View {
 
     private var folderStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ForEach(folders) { f in
                     Button {
                         selected = f
                         Task { await loadFiles(reset: true) }
                     } label: {
-                        VStack(spacing: 4) {
+                        HStack(spacing: 7) {
                             Image(systemName: f.kind == "saved" ? "bookmark.fill" : "megaphone.fill")
-                                .font(.title3)
+                                .font(.caption)
+                                .foregroundStyle(selected?.id == f.id ? Theme.telegramSky : Theme.textSecondary)
                             Text(f.name)
-                                .font(.caption2)
+                                .font(.subheadline)
+                                .fontWeight(selected?.id == f.id ? .semibold : .medium)
                                 .lineLimit(1)
                         }
-                        .frame(width: 76)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
                     }
+                    .buttonStyle(BouncyButtonStyle())
                     .background(
-                        (selected?.id == f.id ? Theme.blue : Color.white.opacity(0.05))
-                            .opacity(selected?.id == f.id ? 0.25 : 1),
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        (selected?.id == f.id ? Theme.telegramSky.opacity(0.22) : Color.white.opacity(0.05)),
+                        in: Capsule()
+                    )
+                    .overlay(
+                        Capsule().strokeBorder(selected?.id == f.id ? Theme.telegramSky.opacity(0.4) : Color.white.opacity(0.08), lineWidth: 1)
                     )
                     .foregroundStyle(selected?.id == f.id ? Theme.textPrimary : Theme.textSecondary)
                 }

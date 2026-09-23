@@ -17,7 +17,6 @@ struct DashboardView: View {
     var body: some View {
         content
             .background(AppBackground())
-            .navigationTitle("Miner")
             .refreshable { await load() }
             .task {
                 await load()
@@ -51,20 +50,35 @@ struct DashboardView: View {
 
     private var heroCard: some View {
         GlassCard {
-            VStack(spacing: 6) {
-                Image(systemName: "diamond.fill")
-                    .font(.title2)
-                    .foregroundStyle(Theme.gold)
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.gold.opacity(0.16))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: "diamond.fill")
+                        .font(.title2)
+                        .foregroundStyle(Theme.gold)
+                }
+                .padding(.top, 4)
+
                 Text(Fmt.points(totalPoints))
-                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .font(.system(size: 42, weight: .heavy, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                     .contentTransition(.numericText())
-                Text("total channel points")
+
+                Text("Total Channel Points")
                     .font(.caption)
+                    .fontWeight(.medium)
                     .foregroundStyle(Theme.textSecondary)
-                Text("\(streamers.count) channels · \(online.count) live")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textSecondary.opacity(0.7))
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(online.isEmpty ? Color.gray : Theme.green)
+                        .frame(width: 6, height: 6)
+                    Text("\(streamers.count) channels · \(online.count) live")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textSecondary.opacity(0.8))
+                }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 20)

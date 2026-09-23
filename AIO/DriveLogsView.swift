@@ -17,9 +17,12 @@ struct DriveLogsView: View {
             .navigationTitle("Logs")
             .refreshable { await load() }
             .task {
+                await load()
                 while !Task.isCancelled {
-                    await load()
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    if !Task.isCancelled {
+                        await loadQuiet()
+                    }
                 }
             }
     }
@@ -93,6 +96,14 @@ struct DriveLogsView: View {
             errorText = nil
         } catch {
             errorText = error.messageText
+        }
+    }
+
+    private func loadQuiet() async {
+        if let fresh = try? await api.logs() {
+            if fresh.count != entries.count || fresh.last?.id != entries.last?.id {
+                entries = fresh
+            }
         }
     }
 }

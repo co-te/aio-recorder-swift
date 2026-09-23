@@ -28,7 +28,6 @@ struct TikRootView: View {
             }
         }
         .background(AppBackground())
-        .navigationTitle("Tik recorder")
     }
 }
 

@@ -25,7 +25,6 @@ struct TangoRootView: View {
             }
         }
         .background(AppBackground())
-        .navigationTitle("Tango recorder")
     }
 }
 

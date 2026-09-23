@@ -74,6 +74,10 @@ struct AIOShell: View {
     @State private var minerAPI: MinerAPI
     @State private var driveAPI: DriveAPI
     @State private var tab = 0
+    @State private var recorderSection = 0
+    @State private var minerSection = 0
+    @State private var driveSection = 0
+    @State private var driveUploadCount = 0
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
 
@@ -96,21 +100,35 @@ struct AIOShell: View {
                     stripAPI: stripAPI,
                     minerAPI: minerAPI,
                     driveAPI: driveAPI,
-                    onSelectTab: { newTab in tab = newTab }
+                    onSelectTab: { newTab, subtab in
+                        tab = newTab
+                        if let subtab {
+                            if newTab == 1 { recorderSection = subtab }
+                            else if newTab == 2 { minerSection = subtab }
+                            else if newTab == 3 { driveSection = subtab }
+                        }
+                    }
                 )
             }
             .tabItem { Label("Overview", systemImage: "sparkles") }.tag(0)
 
             NavigationStack {
-                RecordersRootView(tikAPI: tikAPI, tangoAPI: tangoAPI, stripAPI: stripAPI)
+                RecordersRootView(
+                    tikAPI: tikAPI,
+                    tangoAPI: tangoAPI,
+                    stripAPI: stripAPI,
+                    selected: $recorderSection
+                )
             }
             .tabItem { Label("Recorders", systemImage: "record.circle.fill") }.tag(1)
 
-            NavigationStack { MinerRootView(api: minerAPI) }
+            NavigationStack { MinerRootView(api: minerAPI, selected: $minerSection) }
                 .tabItem { Label("Miner", systemImage: "diamond.fill") }.tag(2)
 
-            NavigationStack { DriveRootView(api: driveAPI) }
-                .tabItem { Label("Drive", systemImage: "externaldrive.fill") }.tag(3)
+            NavigationStack { DriveRootView(api: driveAPI, selected: $driveSection) }
+                .tabItem { Label("Drive", systemImage: "externaldrive.fill") }
+                .badge(driveUploadCount > 0 ? driveUploadCount : 0)
+                .tag(3)
 
             NavigationStack {
                 AIOSettingsView(settings: $settings) { updated in
@@ -125,6 +143,15 @@ struct AIOShell: View {
             .tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
         }
         .tint(Theme.blue)
+        .task {
+            while !Task.isCancelled {
+                if let uploads = try? await driveAPI.uploadJobs() {
+                    let active = uploads.filter { $0.isActive }.count
+                    await MainActor.run { driveUploadCount = active }
+                }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+        }
         .overlay(alignment: .bottom) {
             if let toast {
                 Text(toast)
@@ -163,42 +190,42 @@ struct RecordersRootView: View {
     let tikAPI: TikAPI
     let tangoAPI: TangoAPI
     let stripAPI: StripAPI
-    @State private var selected = 0
+    @Binding var selected: Int
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                CapsuleFilterChip(
-                    title: "TikTok / Twitch",
-                    icon: "video.fill",
-                    badgeColor: Theme.tiktokPink,
-                    isSelected: selected == 0
-                ) {
-                    withAnimation(.easeInOut(duration: 0.15)) { selected = 0 }
-                }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    CapsuleFilterChip(
+                        title: "TikTok / Twitch",
+                        icon: "video.fill",
+                        badgeColor: Theme.tiktokPink,
+                        isSelected: selected == 0
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.15)) { selected = 0 }
+                    }
 
-                CapsuleFilterChip(
-                    title: "Tango.me",
-                    icon: "phone.fill",
-                    badgeColor: Theme.tangoOrange,
-                    isSelected: selected == 1
-                ) {
-                    withAnimation(.easeInOut(duration: 0.15)) { selected = 1 }
-                }
+                    CapsuleFilterChip(
+                        title: "Tango.me",
+                        icon: "phone.fill",
+                        badgeColor: Theme.tangoOrange,
+                        isSelected: selected == 1
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.15)) { selected = 1 }
+                    }
 
-                CapsuleFilterChip(
-                    title: "Stripchat",
-                    icon: "flame.fill",
-                    badgeColor: Theme.stripPink,
-                    isSelected: selected == 2
-                ) {
-                    withAnimation(.easeInOut(duration: 0.15)) { selected = 2 }
+                    CapsuleFilterChip(
+                        title: "Stripchat",
+                        icon: "flame.fill",
+                        badgeColor: Theme.stripPink,
+                        isSelected: selected == 2
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.15)) { selected = 2 }
+                    }
                 }
-
-                Spacer()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
 
             if selected == 0 {
                 TikRootView(api: tikAPI)
@@ -219,24 +246,30 @@ struct RecordersRootView: View {
 
 struct MinerRootView: View {
     let api: MinerAPI
-    @State private var section = 0
+    @Binding var section: Int
+
+    init(api: MinerAPI, selected: Binding<Int> = .constant(0)) {
+        self.api = api
+        self._section = selected
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                CapsuleFilterChip(title: "Miner", icon: "diamond.fill", isSelected: section == 0) {
-                    withAnimation(.easeInOut(duration: 0.15)) { section = 0 }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    CapsuleFilterChip(title: "Miner", icon: "diamond.fill", isSelected: section == 0) {
+                        withAnimation(.easeInOut(duration: 0.15)) { section = 0 }
+                    }
+                    CapsuleFilterChip(title: "Channels", icon: "tv.fill", isSelected: section == 1) {
+                        withAnimation(.easeInOut(duration: 0.15)) { section = 1 }
+                    }
+                    CapsuleFilterChip(title: "Logs", icon: "list.bullet.rectangle", isSelected: section == 2) {
+                        withAnimation(.easeInOut(duration: 0.15)) { section = 2 }
+                    }
                 }
-                CapsuleFilterChip(title: "Channels", icon: "tv.fill", isSelected: section == 1) {
-                    withAnimation(.easeInOut(duration: 0.15)) { section = 1 }
-                }
-                CapsuleFilterChip(title: "Logs", icon: "list.bullet.rectangle", isSelected: section == 2) {
-                    withAnimation(.easeInOut(duration: 0.15)) { section = 2 }
-                }
-                Spacer()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
 
             switch section {
             case 0: DashboardView(api: api)
@@ -245,15 +278,21 @@ struct MinerRootView: View {
             }
         }
         .background(AppBackground())
-        .navigationTitle("Points Miner")
+        .navigationTitle(section == 0 ? "Points Miner"
+                         : (section == 1 ? "Miner Channels" : "Miner Logs"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
 struct DriveRootView: View {
     let api: DriveAPI
-    @State private var section = 0
+    @Binding var section: Int
     @State private var uploadCount = 0
+
+    init(api: DriveAPI, selected: Binding<Int> = .constant(0)) {
+        self.api = api
+        self._section = selected
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -293,16 +332,21 @@ struct DriveRootView: View {
             case 1: ViewsView(api: api)
             case 2: UploadsView(api: api)
             case 3: LocalView(api: api)
+            case 4: DriveLogsView(api: api)
             case 5: ArchiverView(api: api)
-            default: DriveLogsView(api: api)
+            default: FilesView(api: api)
             }
         }
         .background(AppBackground())
         .navigationTitle("Tele-Drive")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            if let uploads = try? await api.uploadJobs() {
-                uploadCount = uploads.filter { $0.isActive }.count
+            while !Task.isCancelled {
+                if let uploads = try? await api.uploadJobs() {
+                    let active = uploads.filter { $0.isActive }.count
+                    await MainActor.run { uploadCount = active }
+                }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
             }
         }
     }

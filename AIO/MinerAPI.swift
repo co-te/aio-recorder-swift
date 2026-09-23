@@ -224,7 +224,12 @@ final class MinerAPI {
     }
 
     func applyRestart() async throws {
-        _ = try await send([String: Bool].self, try request("POST", "/api/apply-restart"))
+        // FastAPI returns null or terminates the process immediately (SIGTERM to PID 1)
+        do {
+            _ = try await session.data(for: try request("POST", "/api/apply-restart"))
+        } catch {
+            // Container restart drops connection — this is expected behavior
+        }
     }
 
     func recentLogs(lines: Int = 60, streamer: String? = nil) async throws -> [String] {

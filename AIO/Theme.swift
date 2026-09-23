@@ -35,6 +35,14 @@ enum Theme {
         nav.configureWithTransparentBackground()
         UINavigationBar.appearance().standardAppearance = nav
         UINavigationBar.appearance().scrollEdgeAppearance = nav
+
+        let tab = UITabBarAppearance()
+        tab.configureWithTransparentBackground()
+        tab.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+        UITabBar.appearance().standardAppearance = tab
+        if #available(iOS 15.0, *) {
+            UITabBar.appearance().scrollEdgeAppearance = tab
+        }
     }
 }
 
