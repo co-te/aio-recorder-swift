@@ -109,13 +109,13 @@ struct FilesView: View {
                             ? "No folders yet — tap + to create one."
                             : "Nothing here yet.")
                             .frame(maxWidth: .infinity)
-                            .padding(24)
+                            .padding(.vertical, 12)
                     }
                     .padding(.horizontal, 16)
                 } else {
                     ForEach(files, id: \.rowId) { f in
                         Button { detail = f } label: {
-                            GlassCard { FileRow(api: api, file: f) }
+                            GlassCard(padding: 0) { FileRow(api: api, file: f) }
                         }
                         .buttonStyle(.plain)
                     }
@@ -138,7 +138,7 @@ struct FilesView: View {
                 }
             }
             .padding(.top, 10)
-            .padding(.bottom, 24)
+            .padding(.bottom, 36)
         }
     }
 
@@ -323,7 +323,7 @@ struct FileDetailSheet: View {
                     if busy { ProgressView().tint(.white) }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.bottom, 36)
             }
             .background(AppBackground())
             .navigationTitle("Details")

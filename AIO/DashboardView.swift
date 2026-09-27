@@ -41,7 +41,8 @@ struct DashboardView: View {
                     streamersCard
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 36)
             }
         }
     }

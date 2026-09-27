@@ -66,14 +66,17 @@ struct AppBackground: View {
 }
 
 struct GlassCard<Content: View>: View {
+    var padding: CGFloat = 16
     let content: Content
 
-    init(@ViewBuilder content: () -> Content) {
+    init(padding: CGFloat = 16, @ViewBuilder content: () -> Content) {
+        self.padding = padding
         self.content = content()
     }
 
     var body: some View {
         content
+            .padding(padding)
             .background(Theme.cardFallback)
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -89,7 +92,24 @@ struct GlassButton: View {
     var icon: String? = nil
     var tint: Color = Theme.blue
     var prominent = false
+    var isFullWidth = false
     let action: () -> Void
+
+    init(
+        title: String,
+        icon: String? = nil,
+        tint: Color = Theme.blue,
+        prominent: Bool = false,
+        isFullWidth: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.icon = icon
+        self.tint = tint
+        self.prominent = prominent
+        self.isFullWidth = isFullWidth
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
@@ -97,9 +117,11 @@ struct GlassButton: View {
                 if let icon { Image(systemName: icon) }
                 Text(title).font(.subheadline).fontWeight(.semibold)
             }
+            .frame(maxWidth: isFullWidth ? .infinity : nil)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
         }
+        .buttonStyle(BouncyButtonStyle())
         .foregroundStyle(prominent ? .white : tint)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)

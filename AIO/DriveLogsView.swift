@@ -67,11 +67,10 @@ struct DriveLogsView: View {
                                 }
                             }
                         }
-                        .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.horizontal, 16)
-                    Spacer(minLength: 24)
+                    Spacer(minLength: 36)
                 }
             }
         }

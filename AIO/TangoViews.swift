@@ -85,7 +85,7 @@ private struct TangoWatchlistView: View {
                         GlassCard {
                             SecondaryLabel("Watchlist empty — tap + to add a streamer.")
                                 .frame(maxWidth: .infinity)
-                                .padding(24)
+                                .padding(.vertical, 12)
                         }
                     } else {
                         ForEach(items) { s in
@@ -96,7 +96,8 @@ private struct TangoWatchlistView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 36)
             }
         }
     }
@@ -326,11 +327,11 @@ private struct TangoRecordingsView: View {
                         GlassCard {
                             SecondaryLabel("No MP4s yet.")
                                 .frame(maxWidth: .infinity)
-                                .padding(24)
+                                .padding(.vertical, 12)
                         }
                     } else {
                         ForEach(items) { r in
-                            GlassCard {
+                            GlassCard(padding: 12) {
                                 HStack(spacing: 12) {
                                     TangoThumb(api: api, rec: r)
                                     VStack(alignment: .leading, spacing: 3) {
@@ -355,13 +356,13 @@ private struct TangoRecordingsView: View {
                                         }
                                     }
                                 }
-                                .padding(12)
                             }
                         }
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 36)
             }
         }
     }

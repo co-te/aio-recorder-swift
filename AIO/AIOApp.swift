@@ -443,14 +443,12 @@ struct AIOConnectScreen: View {
                                     .foregroundStyle(Theme.red)
                             }
                         }
-                        .padding(4)
                     }
                     GlassButton(title: busy ? "Connecting…" : "Connect",
-                                icon: "link", tint: Theme.blue, prominent: true) {
+                                icon: "link", tint: Theme.blue, prominent: true, isFullWidth: true) {
                         Task { await connect() }
                     }
                     .disabled(busy)
-                    .frame(maxWidth: .infinity)
                     SecondaryLabel("Tik :8090 + Tango :8091 need no token.", font: .caption2)
                 }
                 .padding(20)

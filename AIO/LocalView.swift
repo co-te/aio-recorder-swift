@@ -119,7 +119,7 @@ struct LocalView: View {
                             GlassCard {
                                 SecondaryLabel("Empty folder.")
                                     .frame(maxWidth: .infinity)
-                                    .padding(24)
+                                    .padding(.vertical, 12)
                             }
                             .padding(.horizontal, 16)
                         } else {
@@ -144,7 +144,8 @@ struct LocalView: View {
                             SecondaryLabel(note, font: .caption)
                         }
                     }
-                    .padding(.bottom, 24)
+                    .padding(.top, 6)
+                    .padding(.bottom, 36)
                 }
 
                 if !selection.isEmpty {
@@ -271,7 +272,7 @@ private struct LocalRow: View {
 
     var body: some View {
         Button(action: action) {
-            GlassCard {
+            GlassCard(padding: 12) {
                 HStack(spacing: 12) {
                     if !entry.isDir {
                         Image(systemName: selected ? "checkmark.circle.fill" : "circle")
@@ -297,7 +298,6 @@ private struct LocalRow: View {
                             .foregroundStyle(Theme.textSecondary)
                     }
                 }
-                .padding(12)
             }
         }
         .buttonStyle(.plain)

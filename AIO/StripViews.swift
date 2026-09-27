@@ -85,7 +85,7 @@ private struct StripWatchlistView: View {
                         GlassCard {
                             SecondaryLabel("Watchlist empty — tap + to add a streamer.")
                                 .frame(maxWidth: .infinity)
-                                .padding(24)
+                                .padding(.vertical, 12)
                         }
                     } else {
                         ForEach(items) { s in
@@ -96,7 +96,8 @@ private struct StripWatchlistView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 36)
             }
         }
     }
@@ -326,11 +327,11 @@ private struct StripRecordingsView: View {
                         GlassCard {
                             SecondaryLabel("No MP4s yet.")
                                 .frame(maxWidth: .infinity)
-                                .padding(24)
+                                .padding(.vertical, 12)
                         }
                     } else {
                         ForEach(items) { r in
-                            GlassCard {
+                            GlassCard(padding: 12) {
                                 HStack(spacing: 12) {
                                     StripThumb(api: api, rec: r)
                                     VStack(alignment: .leading, spacing: 3) {
@@ -355,13 +356,13 @@ private struct StripRecordingsView: View {
                                         }
                                     }
                                 }
-                                .padding(12)
                             }
                         }
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 36)
             }
         }
     }

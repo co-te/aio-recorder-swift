@@ -92,17 +92,17 @@ struct DriveSettingsView: View {
                     }
                 }
 
-                GlassButton(title: "Save", icon: "checkmark", tint: Theme.blue, prominent: true) {
+                GlassButton(title: "Save", icon: "checkmark", tint: Theme.blue, prominent: true, isFullWidth: true) {
                     apply()
                 }
-                .frame(maxWidth: .infinity)
 
                 SecondaryLabel("Token never leaves this phone.", font: .caption2)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 36)
         }
         .background(AppBackground())
         .navigationTitle("Settings")

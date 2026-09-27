@@ -78,7 +78,7 @@ private struct TikSourcesView: View {
                         GlassCard {
                             SecondaryLabel("No sources — tap + to monitor someone.")
                                 .frame(maxWidth: .infinity)
-                                .padding(24)
+                                .padding(.vertical, 12)
                         }
                     } else {
                         ForEach(items) { s in
@@ -90,7 +90,8 @@ private struct TikSourcesView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 36)
             }
         }
     }
@@ -423,7 +424,7 @@ private struct TikActiveView: View {
                                 SecondaryLabel("Nothing recording right now.")
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(24)
+                            .padding(.vertical, 12)
                         }
                     } else {
                         ForEach(items) { r in
@@ -440,7 +441,8 @@ private struct TikActiveView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 36)
             }
         }
     }
@@ -485,7 +487,7 @@ private struct TikHistoryView: View {
                         GlassCard {
                             SecondaryLabel("No past recordings.")
                                 .frame(maxWidth: .infinity)
-                                .padding(24)
+                                .padding(.vertical, 12)
                         }
                     } else {
                         ForEach(items.prefix(50)) { r in
@@ -502,7 +504,8 @@ private struct TikHistoryView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 36)
             }
         }
     }
@@ -591,10 +594,9 @@ private struct TikConfigView: View {
                             .foregroundStyle(Theme.textPrimary)
                     }
                 }
-                GlassButton(title: "Save", icon: "checkmark", tint: Theme.blue, prominent: true) {
+                GlassButton(title: "Save", icon: "checkmark", tint: Theme.blue, prominent: true, isFullWidth: true) {
                     Task { await save() }
                 }
-                .frame(maxWidth: .infinity)
 
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
@@ -682,7 +684,8 @@ private struct TikConfigView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 36)
         }
         .task { await load() }
     }

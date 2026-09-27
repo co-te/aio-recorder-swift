@@ -47,7 +47,8 @@ struct ArchiverActive: Decodable {
     var isGDActive: Bool {
         if !running { return false }
         let c = current.lowercased()
-        if c.contains("gdrive") || c.contains("drive") || (gdrive?.status.lowercased().contains("uploading") ?? false) {
+        let gdStatus = gdrive?.status.lowercased() ?? ""
+        if c.contains("gdrive") || c.contains("drive") || gdStatus.contains("uploading") || gdStatus.contains("reading") {
             return true
         }
         return false
@@ -56,7 +57,8 @@ struct ArchiverActive: Decodable {
     var isTGActive: Bool {
         if !running { return false }
         let c = current.lowercased()
-        if c.contains("telegram") || c.contains("pending") || (teledrive?.pending ?? 0) > 0 {
+        let tgStatus = teledrive?.status.lowercased() ?? ""
+        if c.contains("telegram") || c.contains("pending") || (teledrive?.pending ?? 0) > 0 || tgStatus.contains("pending") || tgStatus.contains("queued") {
             return true
         }
         return false
@@ -146,7 +148,7 @@ struct ArchiverView: View {
                         overallProgressCard(a)
                             .padding(.horizontal, 16)
 
-                        // MARK: - Dedicated Destination Indicators
+                        // MARK: - Dedicated Destination Indicators (Tele-Drive & Google Drive)
                         destinationsGrid(a)
                             .padding(.horizontal, 16)
                     }
@@ -183,7 +185,8 @@ struct ArchiverView: View {
                             .padding(.top, 4)
                     }
                 }
-                .padding(.vertical, 14)
+                .padding(.top, 8)
+                .padding(.bottom, 40)
             }
         }
     }
@@ -285,18 +288,18 @@ struct ArchiverView: View {
     @ViewBuilder
     private func destinationsGrid(_ a: ArchiverActive) -> some View {
         VStack(spacing: 10) {
-            // Destination 1: Tele-Drive (Telegram)
+            // Destination 1: Tele-Drive (Telegram Saved Messages)
             BentoCard(
                 headerIcon: "paperplane.fill",
                 headerTitle: "Tele-Drive (Telegram)",
                 headerSubtitle: "Saved Messages chunk storage",
-                headerBadge: a.isTGActive ? "UPLOADING" : "SYNCED",
-                badgeColor: a.isTGActive ? Theme.telegramSky : Theme.green
+                headerBadge: tgBadgeText(a),
+                badgeColor: tgBadgeColor(a)
             ) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Destination")
+                            Text("Target Destination")
                                 .font(.caption2)
                                 .foregroundStyle(Theme.textSecondary)
                             Text("Telegram Saved Messages")
@@ -313,6 +316,11 @@ struct ArchiverView: View {
                                 .padding(.vertical, 3)
                                 .background(Theme.telegramSky.opacity(0.2), in: Capsule())
                                 .foregroundStyle(Theme.telegramSky)
+                        } else if let tg = a.teledrive, tg.queued > 0 {
+                            Text("\(tg.queued) synced this run")
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                                .foregroundStyle(Theme.green)
                         } else {
                             Text("Up to date")
                                 .font(.caption2)
@@ -322,25 +330,36 @@ struct ArchiverView: View {
                     }
 
                     if a.isTGActive {
-                        ProgressView()
-                            .tint(Theme.telegramSky)
-                            .scaleEffect(0.9)
+                        VStack(alignment: .leading, spacing: 6) {
+                            if let tg = a.teledrive, tg.pending > 0 {
+                                let totalTg = max(tg.queued, tg.pending)
+                                let doneTg = max(totalTg - tg.pending, 0)
+                                let ratio = totalTg > 0 ? Double(doneTg) / Double(totalTg) : 0.0
+                                ProgressView(value: ratio)
+                                    .tint(Theme.telegramSky)
+                                    .scaleEffect(x: 1, y: 1.2, anchor: .center)
+                            } else {
+                                ProgressView()
+                                    .tint(Theme.telegramSky)
+                                    .scaleEffect(0.85)
+                            }
+                        }
                     }
                 }
             }
 
-            // Destination 2: Google Drive (rclone)
+            // Destination 2: Google Drive (rclone gdrive)
             BentoCard(
                 headerIcon: "externaldrive.fill",
                 headerTitle: "Google Drive (rclone)",
                 headerSubtitle: "gdrive:Pi-Backups/<category>",
-                headerBadge: a.isGDActive ? "UPLOADING" : "SYNCED",
-                badgeColor: a.isGDActive ? Theme.twitch : Theme.green
+                headerBadge: gdBadgeText(a),
+                badgeColor: gdBadgeColor(a)
             ) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Folder Structure")
+                            Text("Destination Folder")
                                 .font(.caption2)
                                 .foregroundStyle(Theme.textSecondary)
                             Text("Pi-Backups/{tango, tik, strip, snapchat}")
@@ -357,6 +376,11 @@ struct ArchiverView: View {
                                 .padding(.vertical, 3)
                                 .background(Theme.twitch.opacity(0.25), in: Capsule())
                                 .foregroundStyle(Theme.twitch)
+                        } else if let gd = a.gdrive, gd.uploaded > 0 {
+                            Text("\(gd.uploaded) uploaded")
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                                .foregroundStyle(Theme.green)
                         } else {
                             Text("Verified")
                                 .font(.caption2)
@@ -366,13 +390,46 @@ struct ArchiverView: View {
                     }
 
                     if a.isGDActive {
-                        ProgressView()
-                            .tint(Theme.twitch)
-                            .scaleEffect(0.9)
+                        VStack(alignment: .leading, spacing: 6) {
+                            if let gd = a.gdrive, gd.needed > 0 {
+                                let ratio = Double(min(gd.uploaded, gd.needed)) / Double(gd.needed)
+                                ProgressView(value: ratio)
+                                    .tint(Theme.twitch)
+                                    .scaleEffect(x: 1, y: 1.2, anchor: .center)
+                            } else {
+                                ProgressView()
+                                    .tint(Theme.twitch)
+                                    .scaleEffect(0.85)
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    private func tgBadgeText(_ a: ArchiverActive) -> String {
+        if !a.running { return "SYNCED" }
+        if a.isTGActive { return "UPLOADING" }
+        return "WAITING"
+    }
+
+    private func tgBadgeColor(_ a: ArchiverActive) -> Color {
+        if !a.running { return Theme.green }
+        if a.isTGActive { return Theme.telegramSky }
+        return Theme.textSecondary
+    }
+
+    private func gdBadgeText(_ a: ArchiverActive) -> String {
+        if !a.running { return "SYNCED" }
+        if a.isGDActive { return "UPLOADING" }
+        return "WAITING"
+    }
+
+    private func gdBadgeColor(_ a: ArchiverActive) -> Color {
+        if !a.running { return Theme.green }
+        if a.isGDActive { return Theme.twitch }
+        return Theme.textSecondary
     }
 
     // MARK: - Actions

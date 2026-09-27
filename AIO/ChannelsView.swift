@@ -46,7 +46,7 @@ struct ChannelsView: View {
                                 SecondaryLabel("No channels — tap + to add one.")
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(24)
+                            .padding(.vertical, 12)
                         }
                     } else {
                         ForEach(streamers, id: \.username) { s in
@@ -59,7 +59,8 @@ struct ChannelsView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 36)
             }
         }
     }

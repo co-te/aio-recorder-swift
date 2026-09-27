@@ -161,14 +161,14 @@ struct ViewsView: View {
                             GlassCard {
                                 SecondaryLabel("Nothing in this view.")
                                     .frame(maxWidth: .infinity)
-                                    .padding(24)
+                                    .padding(.vertical, 12)
                             }
                             .padding(.horizontal, 16)
                         } else {
                             SecondaryLabel("\(items.count) items", font: .caption2)
                             ForEach(items, id: \.rowId) { f in
                                 Button { detail = f } label: {
-                                    GlassCard { FileRow(api: api, file: f) }
+                                    GlassCard(padding: 0) { FileRow(api: api, file: f) }
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -176,7 +176,7 @@ struct ViewsView: View {
                         }
                     }
                     .padding(.top, 6)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 36)
                 }
             }
         }
